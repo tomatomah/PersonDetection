@@ -16,8 +16,8 @@ datasets:
       image_dir: ""
       label_path: ""
       
-  num_workers: 0
-  input_height: 640
+  num_workers: 4
+  input_height: 480
   input_width: 640
   mosaic: 0.5 # image mosaic (probability)
   mix_up: 0.5 # image mix-up (probability)
