@@ -287,42 +287,42 @@ class CustomYOLO(nn.Module):
         return self.yolo_head(self.yolo_neck(self.yolo_backbone(x)))
 
 
-def yolo_n(num_classes: int):
+def yolo_n(num_classes: int) -> nn.Module:
     csp = [False, True]
     depth = [1, 1, 1, 1, 1, 1]
     ch = [3, 16, 32, 64, 128, 256]
     return CustomYOLO(ch, depth, csp, num_classes)
 
 
-def yolo_t(num_classes: int):
+def yolo_t(num_classes: int) -> nn.Module:
     csp = [False, True]
     depth = [1, 1, 1, 1, 1, 1]
     ch = [3, 24, 48, 96, 192, 384]
     return CustomYOLO(ch, depth, csp, num_classes)
 
 
-def yolo_s(num_classes: int):
+def yolo_s(num_classes: int) -> nn.Module:
     csp = [False, True]
     depth = [1, 1, 1, 1, 1, 1]
     ch = [3, 32, 64, 128, 256, 512]
     return CustomYOLO(ch, depth, csp, num_classes)
 
 
-def yolo_m(num_classes: int):
+def yolo_m(num_classes: int) -> nn.Module:
     csp = [True, True]
     depth = [1, 1, 1, 1, 1, 1]
     ch = [3, 64, 128, 256, 512, 512]
     return CustomYOLO(ch, depth, csp, num_classes)
 
 
-def yolo_l(num_classes: int):
+def yolo_l(num_classes: int) -> nn.Module:
     csp = [True, True]
     depth = [2, 2, 2, 2, 2, 2]
     ch = [3, 64, 128, 256, 512, 512]
     return CustomYOLO(ch, depth, csp, num_classes)
 
 
-def yolo_x(num_classes: int):
+def yolo_x(num_classes: int) -> nn.Module:
     csp = [True, True]
     depth = [2, 2, 2, 2, 2, 2]
     ch = [3, 96, 192, 384, 768, 768]
