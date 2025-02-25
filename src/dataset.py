@@ -1,4 +1,3 @@
-import sys
 from random import sample, shuffle
 
 import cv2
