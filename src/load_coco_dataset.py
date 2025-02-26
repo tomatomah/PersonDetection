@@ -7,6 +7,7 @@ import simplejson as json
 from tqdm import tqdm
 
 category_dict = {
+    0: "head",
     1: "person",
     2: "bicycle",
     3: "car",
@@ -90,13 +91,13 @@ category_dict = {
 }
 
 
-def load_dataset(dataset_param, subset):
-    image_paths, labels = format_data(dataset_param, subset)
+def load_dataset(dataset_param, subset, class_to_id):
+    image_paths, labels = format_data(dataset_param, subset, class_to_id)
 
     return image_paths, labels
 
 
-def format_data(dataset_param, subset):
+def format_data(dataset_param, subset, class_to_id):
     format_image_paths = []
     format_labels = []
 
@@ -105,16 +106,15 @@ def format_data(dataset_param, subset):
 
     assert len(image_paths) == len(coco_labels)
 
-    oldid_to_newid = {k: i for i, k in enumerate(category_dict.keys())}
+    oldid_to_newid = {}
+    for category_id, category_name in category_dict.items():
+        if category_name in class_to_id.keys():
+            oldid_to_newid[category_id] = class_to_id[category_name]
 
     for image_path in image_paths:
         image_id = int(os.path.splitext(os.path.basename(image_path))[0])
 
         if image_id not in coco_labels.keys():
-            continue
-
-        # Box is empty
-        if len(coco_labels[image_id]["objects"]) == 0:
             continue
 
         if subset == "train":
@@ -127,6 +127,10 @@ def format_data(dataset_param, subset):
             sys.exit(1)
 
         label = format_label(coco_labels[image_id]["objects"], oldid_to_newid)
+
+        # Box is empty
+        if len(label) == 0:
+            continue
 
         format_image_paths.append(image_path)
         format_labels.append(label)
@@ -209,7 +213,11 @@ def format_label(objects, oldid_to_newid):
     label_info = []
     for object_info in objects:
         bbox = object_info["bbox"]
-        category_id = convert_category_id(object_info["category_id"], oldid_to_newid)
+
+        if object_info["category_id"] not in oldid_to_newid.keys():
+            continue
+
+        category_id = oldid_to_newid[object_info["category_id"]]
 
         # Calculate box coordinates
         bbox_ltx = bbox[0]
@@ -229,24 +237,16 @@ def format_label(objects, oldid_to_newid):
         invalid_coord = any(coord < 0.0 for coord in [bbox_ltx, bbox_lty, bbox_rbx, bbox_rby, bbox_cx, bbox_cy])
         invalid_wh = any(x < 0.0 for x in [width, height])
         if invalid_coord or invalid_wh:
-            print(
-                f"Error: Invalid negative or zero coordinates/dimensions detected:\n"
-                f"Left-Top     : ({bbox_ltx:.2f}, {bbox_lty:.2f})\n"
-                f"Right-Bottom : ({bbox_rbx:.2f}, {bbox_rby:.2f})\n"
-                f"Center       : ({bbox_cx:.2f}, {bbox_cy:.2f})\n"
-                f"Size         : width={width:.2f}, height={height:.2f}"
-            )
-            sys.exit(1)
+            # print(
+            #     f"Warning: Invalid negative or zero coordinates/dimensions detected:\n"
+            #     f"Left-Top     : ({bbox_ltx:.2f}, {bbox_lty:.2f})\n"
+            #     f"Right-Bottom : ({bbox_rbx:.2f}, {bbox_rby:.2f})\n"
+            #     f"Center       : ({bbox_cx:.2f}, {bbox_cy:.2f})\n"
+            #     f"Size         : width={width:.2f}, height={height:.2f}"
+            # )
+            return np.array([], dtype=np.float32)
 
         # [cx, cy, width, height, category_id]
         label_info.append([bbox_cx, bbox_cy, width, height, category_id])
 
     return np.array(label_info, dtype=np.float32)
-
-
-def convert_category_id(category_id, oldid_to_newid):
-    if category_id not in oldid_to_newid.keys():
-        print(f"category_id={category_id} does not exist")
-        sys.exit(1)
-
-    return oldid_to_newid[category_id]
