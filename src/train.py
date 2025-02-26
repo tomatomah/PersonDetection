@@ -163,6 +163,7 @@ class Trainer(object):
                 self.avg_cls_loss += cls_loss.item()
 
                 self.scaler.scale(total_loss).backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
 
                 if self.global_step % self.accumulate == 0:
                     self.scaler.step(self.optimizer)
