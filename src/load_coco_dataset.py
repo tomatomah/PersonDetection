@@ -102,7 +102,7 @@ def format_data(dataset_param, subset, class_to_id):
     format_labels = []
 
     image_paths = get_image_paths(dataset_param[f"{subset}_image_directory"])
-    coco_labels = get_coco_labels(dataset_param[f"{subset}_label_path"], subset)
+    coco_labels = get_coco_labels(dataset_param[f"{subset}_annotation_path"], subset)
 
     assert len(image_paths) == len(coco_labels)
 
@@ -219,34 +219,35 @@ def format_label(objects, oldid_to_newid):
 
         category_id = oldid_to_newid[object_info["category_id"]]
 
-        # Calculate box coordinates
         bbox_ltx = bbox[0]
         bbox_lty = bbox[1]
         width = bbox[2]
         height = bbox[3]
 
-        # Calculate center coordinates
         bbox_cx = bbox_ltx + (width * 0.5)
         bbox_cy = bbox_lty + (height * 0.5)
 
-        # Calculate max coordinates
         bbox_rbx = bbox_ltx + width
         bbox_rby = bbox_lty + height
 
         # Validate all coordinates and dimensions
-        invalid_coord = any(coord < 0.0 for coord in [bbox_ltx, bbox_lty, bbox_rbx, bbox_rby, bbox_cx, bbox_cy])
-        invalid_wh = any(x < 0.0 for x in [width, height])
-        if invalid_coord or invalid_wh:
-            # print(
-            #     f"Warning: Invalid negative or zero coordinates/dimensions detected:\n"
-            #     f"Left-Top     : ({bbox_ltx:.2f}, {bbox_lty:.2f})\n"
-            #     f"Right-Bottom : ({bbox_rbx:.2f}, {bbox_rby:.2f})\n"
-            #     f"Center       : ({bbox_cx:.2f}, {bbox_cy:.2f})\n"
-            #     f"Size         : width={width:.2f}, height={height:.2f}"
-            # )
-            return np.array([], dtype=np.float32)
+        if (
+            bbox_ltx < 0.0
+            or bbox_lty < 0.0
+            or bbox_rbx < 0.0
+            or bbox_rby < 0.0
+            or bbox_cx < 0.0
+            or bbox_cy < 0.0
+            or width <= 3.0
+            or height <= 3.0
+        ):
+            continue
 
         # [cx, cy, width, height, category_id]
         label_info.append([bbox_cx, bbox_cy, width, height, category_id])
+
+    # Box is empty
+    if not label_info:
+        return np.zeros((0, 5), dtype=np.float32)
 
     return np.array(label_info, dtype=np.float32)
