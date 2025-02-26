@@ -42,10 +42,12 @@ class Trainer(object):
 
         self.logger, self.log_file = self._setup_logger(os.path.join(self.save_dir, "log.csv"))
 
-        self.avg_iou_loss = 0
-        self.avg_conf_loss = 0
-        self.avg_cls_loss = 0
-        self.val_loss = 0
+        self.avg_iou_loss = 0.0
+        self.avg_conf_loss = 0.0
+        self.avg_cls_loss = 0.0
+        self.train_loss = 0.0
+        self.best_train_loss = float("inf")
+        self.val_loss = 0.0
         self.best_val_loss = float("inf")
         self.start_epoch = 1
         self.global_step = 0
@@ -67,9 +69,15 @@ class Trainer(object):
         self.ema = utils.EMA(self.model)
 
     def _init_data(self):
-        train_data, train_labels, val_data, val_labels = load_datasets(self.config["datasets"]["info"])
+        train_data, train_labels, val_data, val_labels = load_datasets(self.config["datasets"])
         train_dataset = CustomDataset(train_data, train_labels, self.config["datasets"], training=True)
-        val_dataset = CustomDataset(val_data, val_labels, self.config["datasets"], training=False)
+
+        self.has_validation_data = len(val_data) > 0
+
+        if self.has_validation_data:
+            val_dataset = CustomDataset(val_data, val_labels, self.config["datasets"], training=False)
+        else:
+            val_dataset = CustomDataset([], [], self.config["datasets"], training=False)
 
         if self.config["datasets"]["num_workers"] > 0:
             persistent_workers = True
@@ -85,15 +93,19 @@ class Trainer(object):
             persistent_workers=persistent_workers,
             collate_fn=CustomDataset.custom_collate_fn,
         )
-        self.val_loader = DataLoader(
-            val_dataset,
-            batch_size=self.config["training"]["batch_size"],
-            shuffle=False,
-            num_workers=self.config["datasets"]["num_workers"],
-            pin_memory=self.use_cuda,
-            persistent_workers=persistent_workers,
-            collate_fn=CustomDataset.custom_collate_fn,
-        )
+
+        if self.has_validation_data:
+            self.val_loader = DataLoader(
+                val_dataset,
+                batch_size=self.config["training"]["batch_size"],
+                shuffle=False,
+                num_workers=self.config["datasets"]["num_workers"],
+                pin_memory=self.use_cuda,
+                persistent_workers=persistent_workers,
+                collate_fn=CustomDataset.custom_collate_fn,
+            )
+        else:
+            self.val_loader = None
 
     def _init_loss(self):
         self.loss_func = CustomLoss(self.config["model"]["num_classes"], self.device)
@@ -129,9 +141,9 @@ class Trainer(object):
         if (epoch - 1) == self.config["training"]["total_epochs"] - 15:
             self.train_loader.dataset.config["mosaic"] = 0.0
 
-        self.avg_iou_loss = 0
-        self.avg_conf_loss = 0
-        self.avg_cls_loss = 0
+        self.avg_iou_loss = 0.0
+        self.avg_conf_loss = 0.0
+        self.avg_cls_loss = 0.0
 
         with tqdm(self.train_loader, leave=False) as pbar:
             for iteration, (inputs, targets) in enumerate(pbar, 1):
@@ -175,10 +187,11 @@ class Trainer(object):
         self.avg_iou_loss /= iteration
         self.avg_conf_loss /= iteration
         self.avg_cls_loss /= iteration
+        self.train_loss = self.avg_iou_loss + self.avg_conf_loss + self.avg_cls_loss
 
     def _validate(self):
         self.model.eval()
-        self.val_loss = 0
+        self.val_loss = 0.0
         with torch.no_grad():
             with tqdm(self.val_loader, leave=False) as pbar:
                 for iteration, (inputs, targets) in enumerate(pbar, 1):
@@ -204,8 +217,15 @@ class Trainer(object):
             "optimizer": self.optimizer.state_dict(),
         }
         torch.save(checkpoint, os.path.join(self.save_dir, "last.pt"))
-        if self.val_loss <= self.best_val_loss:
-            torch.save(checkpoint, os.path.join(self.save_dir, "best.pt"))
+
+        if self.has_validation_data:
+            if self.val_loss <= self.best_val_loss:
+                torch.save(checkpoint, os.path.join(self.save_dir, "best.pt"))
+                self.best_val_loss = self.val_loss
+        else:
+            if self.train_loss <= self.best_train_loss:
+                torch.save(checkpoint, os.path.join(self.save_dir, "best.pt"))
+                self.best_train_loss = self.train_loss
 
     def train(self):
         print(("\n" + "%15s" * 5) % ("epoch", "memory", "iou_loss", "conf_loss", "cls_loss"))
@@ -221,23 +241,24 @@ class Trainer(object):
             )
             print(epoch_str)
 
-            self._validate()
+            log_data = {
+                "epoch": f"{str(epoch).zfill(3)}",
+                "iou_loss": str(f"{self.avg_iou_loss:.3f}"),
+                "conf_loss": str(f"{self.avg_conf_loss:.3f}"),
+                "cls_loss": str(f"{self.avg_cls_loss:.3f}"),
+                "train_total_loss": str(f"{self.train_loss:.3f}"),
+            }
 
-            self.logger.writerow(
-                {
-                    "epoch": f"{str(epoch).zfill(3)}",
-                    "iou_loss": str(f"{self.avg_iou_loss:.3f}"),
-                    "conf_loss": str(f"{self.avg_conf_loss:.3f}"),
-                    "cls_loss": str(f"{self.avg_cls_loss:.3f}"),
-                    "train_total_loss": str(f"{(self.avg_iou_loss + self.avg_conf_loss + self.avg_cls_loss):.3f}"),
-                    "val_total_loss": str(f"{self.val_loss:.3f}"),
-                }
-            )
+            if self.has_validation_data:
+                self._validate()
+                log_data["val_total_loss"] = str(f"{self.val_loss:.3f}")
+            else:
+                log_data["val_total_loss"] = "N/A"
 
+            self.logger.writerow(log_data)
             self.log_file.flush()
 
             self._save_checkpoints(epoch)
-            self.best_val_loss = min(self.best_val_loss, self.val_loss)
 
         torch.cuda.empty_cache()
         gc.collect()
