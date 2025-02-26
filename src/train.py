@@ -138,7 +138,8 @@ class Trainer(object):
         self.model.train()
         self.optimizer.zero_grad()
 
-        if (epoch - 1) == self.config["training"]["total_epochs"] - 15:
+        mosaic_off_epoch = int(self.config["training"]["total_epochs"] * 0.9) + 1
+        if epoch == mosaic_off_epoch:
             self.train_loader.dataset.config["mosaic"] = 0.0
 
         self.avg_iou_loss = 0.0
