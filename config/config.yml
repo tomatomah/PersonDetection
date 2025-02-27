@@ -1,9 +1,9 @@
 model:
   type: "nano"
-  num_classes: 3
+  num_classes: 2
 
 datasets:
-  class_to_id: {"head": 0, "person":1, "umbrella": 2}
+  class_to_id: {"head": 0, "person":1}
   info:
     - 
       name: "coco"
@@ -19,8 +19,8 @@ datasets:
   num_workers: 4
   input_height: 480
   input_width: 640
-  mosaic: 0.5 # image mosaic (probability)
-  mix_up: 0.5 # image mix-up (probability)
+  mosaic: 1.0 # image mosaic (probability)
+  mix_up: 1.0 # image mix-up (probability)
   flip_ud: 0.5 # image flip up-down (probability)
   flip_lr: 0.5 # image flip left-right (probability)
   hsv_h: 0.015 # image HSV-Hue augmentation (fraction)
@@ -29,7 +29,7 @@ datasets:
 
 training:
   seed: 42
-  total_epochs: 30
+  total_epochs: 300
   batch_size: 64
   min_lr: 0.0001 # initial learning rate
   max_lr: 0.01 # maximum learning rate
