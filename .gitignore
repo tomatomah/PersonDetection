@@ -172,5 +172,5 @@ cython_debug/
 
 # Project file
 datasets/
-outputs/
+outputs*/
 *.log
