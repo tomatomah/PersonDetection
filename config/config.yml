@@ -36,7 +36,5 @@ training:
   momentum: 0.937 # SGD momentum/Adam beta1
   weight_decay: 0.0005 # optimizer weight decay
   warmup_epochs: 5 # warmup epochs
-  box: 7.5 # box loss gain
-  cls: 0.5 # cls loss gain
-  dfl: 1.5 # dfl loss gain
   save_dir: "./outputs"
+  
