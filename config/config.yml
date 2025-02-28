@@ -30,7 +30,7 @@ datasets:
 training:
   seed: 42
   total_epochs: 100
-  batch_size: 32
+  batch_size: 64
   min_lr: 0.0001 # initial learning rate
   max_lr: 0.01 # maximum learning rate
   momentum: 0.937 # SGD momentum/Adam beta1
