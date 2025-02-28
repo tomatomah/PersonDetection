@@ -202,7 +202,7 @@ class Trainer(object):
         self.train_loss = self.avg_iou_loss + self.avg_conf_loss + self.avg_cls_loss
 
     def _validate(self):
-        self.model.eval()
+        self.ema.ema.eval()
         self.val_loss = 0.0
         with torch.no_grad():
             with tqdm(self.val_loader, leave=False) as pbar:
@@ -210,7 +210,7 @@ class Trainer(object):
                     inputs = inputs.to(self.device)
                     targets = [target.to(self.device) for target in targets]
 
-                    outputs = self.model(inputs)
+                    outputs = self.ema.ema(inputs)
 
                     iou_loss, conf_loss, cls_loss = self.loss_func(outputs, targets)
                     total_loss = iou_loss + conf_loss + cls_loss
