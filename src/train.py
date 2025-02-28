@@ -29,7 +29,10 @@ class Trainer(object):
         self.device_type = "cuda" if self.device.type == "cuda" else "cpu"
         self.use_cuda = self.device.type == "cuda"
 
-        self.scaler = torch.amp.GradScaler()
+        self.use_fp16 = args.fp16
+        if self.use_fp16:
+            self.scaler = torch.amp.GradScaler()
+
         self.accumulate = max(round(64 / self.config["training"]["batch_size"]), 1)
 
         self.save_dir = os.path.join(self.config["training"]["save_dir"], "train")
@@ -108,7 +111,7 @@ class Trainer(object):
             self.val_loader = None
 
     def _init_loss(self):
-        self.loss_func = CustomLoss(self.config["model"]["num_classes"], self.device)
+        self.loss_func = CustomLoss(self.config["model"]["num_classes"], self.device, self.use_fp16)
 
     def _init_optimizer(self):
         self.optimizer = optim.SGD(
@@ -152,7 +155,7 @@ class Trainer(object):
                 inputs = inputs.to(self.device)
                 targets = [target.to(self.device) for target in targets]
 
-                with torch.amp.autocast(device_type=self.device_type):
+                with torch.amp.autocast(device_type=self.device_type, enabled=self.use_fp16):
                     outputs = self.model(inputs)
                     iou_loss, conf_loss, cls_loss = self.loss_func(outputs, targets)
                     total_loss = iou_loss + conf_loss + cls_loss
@@ -161,12 +164,20 @@ class Trainer(object):
                 self.avg_conf_loss += conf_loss.item()
                 self.avg_cls_loss += cls_loss.item()
 
-                self.scaler.scale(total_loss).backward()
+                if self.use_fp16:
+                    self.scaler.scale(total_loss).backward()
+                else:
+                    total_loss.backward()
+
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
 
                 if self.global_step % self.accumulate == 0:
-                    self.scaler.step(self.optimizer)
-                    self.scaler.update()
+                    if self.use_fp16:
+                        self.scaler.step(self.optimizer)
+                        self.scaler.update()
+                    else:
+                        self.optimizer.step()
+
                     self.optimizer.zero_grad()
                     self.ema.update(self.model)
 
@@ -281,6 +292,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--gpu_id", type=int, default=0, help="GPU device ID")
     parser.add_argument("--seed", type=int, default=0, help="Random seeds")
+    parser.add_argument("--fp16", action="store_true", help="Use mixed precision training (FP16)")
     args = parser.parse_args()
 
     main(args)

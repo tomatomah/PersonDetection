@@ -43,9 +43,10 @@ class IOUloss(nn.Module):
 
 
 class CustomLoss(object):
-    def __init__(self, num_classes, device):
+    def __init__(self, num_classes, device, fp16=False):
         self.num_classes = num_classes
         self.device = device
+        self.fp16 = fp16
 
         self.strides = torch.tensor([8, 16, 32], device=device)
 
@@ -181,7 +182,7 @@ class CustomLoss(object):
         pair_wise_ious = self.calc_bboxes_iou(gt_bboxes_per_image, bboxes_preds_per_image)
         pair_wise_ious_loss = -torch.log(pair_wise_ious + 1e-8)
 
-        with torch.amp.autocast(device_type="cuda", enabled=False):
+        with torch.amp.autocast(device_type="cuda" if self.device.type == "cuda" else "cpu", enabled=False):
             cls_preds = (
                 cls_preds.unsqueeze(dim=0).repeat(num_gt, 1, 1).sigmoid()
                 * obj_preds.unsqueeze(dim=0).repeat(num_gt, 1, 1).sigmoid()
