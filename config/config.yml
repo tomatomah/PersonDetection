@@ -38,3 +38,8 @@ training:
   warmup_epochs: 5 # warmup epochs
   save_dir: "./outputs"
   
+onnx:
+  input_blob_name: "input"
+  output_blob_name: ["output1", "output2", "output3"]
+  device: "cpu"
+  save_dir: "./outputs"
