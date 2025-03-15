@@ -174,3 +174,4 @@ cython_debug/
 datasets/
 outputs*/
 *.log
+*.mp4
