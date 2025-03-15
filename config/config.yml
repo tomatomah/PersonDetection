@@ -43,3 +43,16 @@ onnx:
   output_blob_name: ["output1", "output2", "output3"]
   device: "cpu"
   save_dir: "./outputs"
+
+detecting:
+  id_to_class: {0: "head", 1: "person"}
+  plot_colors: [[255, 125, 255],
+                [125, 255, 125]]
+  input_type: "image"  # image or movie
+  image_list_file: "./image_list.txt" # only image
+  movie_path: "./assets/demo1.mp4" # only movie
+  model_file: "model.onnx"
+  detect_threshold: 0.25
+  iou_threshold: 0.45
+  scale_list: [1.0]
+  save_dir: "./outputs"
