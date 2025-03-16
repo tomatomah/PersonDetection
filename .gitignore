@@ -175,3 +175,5 @@ datasets/
 outputs*/
 *.log
 *.mp4
+hybrid_yolo11x.txt
+yolox.txt
