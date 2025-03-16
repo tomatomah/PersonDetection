@@ -1,5 +1,5 @@
 model:
-  type: "xlarge"
+  type: "nano"
   num_classes: 2
 
 datasets:
