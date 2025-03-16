@@ -41,7 +41,7 @@ training:
   # only sgd optimizer
   min_lr: 0.0001 # initial learning rate
   max_lr: 0.01 # maximum learning rate
-  momentum: 0.937 # sgd momentum/Adam beta1
+  momentum: 0.937 # sgd momentum
   weight_decay: 0.0005 # sgd optimizer weight decay
 
   # only adam optimizer
