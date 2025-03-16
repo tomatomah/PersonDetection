@@ -69,7 +69,8 @@ class Trainer(object):
         self.model = create_model(self.config["model"]["type"], self.config["model"]["num_classes"])
         self.model.to(self.device)
 
-        self.ema = utils.EMA(self.model)
+        if self.config["training"]["use_ema"]:
+            self.ema = utils.EMA(self.model)
 
     def _init_data(self):
         train_data, train_labels, val_data, val_labels = load_datasets(self.config["datasets"])
@@ -114,19 +115,44 @@ class Trainer(object):
         self.loss_func = CustomLoss(self.config["model"]["num_classes"], self.device, self.use_fp16)
 
     def _init_optimizer(self):
-        self.optimizer = optim.SGD(
-            utils.set_params(self.model, self.config["training"]["weight_decay"]),
-            self.config["training"]["min_lr"],
-            self.config["training"]["momentum"],
-            nesterov=True,
-        )
-        self.scheduler = utils.CosineLR(
-            self.config["training"]["min_lr"],
-            self.config["training"]["max_lr"],
-            self.config["training"]["warmup_epochs"],
-            self.config["training"]["total_epochs"],
-            len(self.train_loader),
-        )
+        optimizer_type = self.config["training"]["optimizer"]
+        if optimizer_type == "sgd":
+            self.optimizer = optim.SGD(
+                utils.set_params(self.model, self.config["training"]["weight_decay"]),
+                self.config["training"]["min_lr"],
+                self.config["training"]["momentum"],
+                nesterov=self.config["training"].get("nesterov", True),
+            )
+        elif optimizer_type == "adam":
+            self.optimizer = optim.Adam(
+                self.model.parameters(),
+                lr=self.config["training"]["lr"],
+                betas=(self.config["training"]["beta1"], self.config["training"]["beta2"]),
+            )
+        else:
+            print(f"Unsupported optimizer type: {optimizer_type}. Choose 'adam' or 'sgd'.")
+            sys.exit(1)
+
+        scheduler_type = self.config["training"]["scheduler"]
+        if scheduler_type == "cosine":
+            self.scheduler = utils.CosineLR(
+                self.config["training"]["min_lr"],
+                self.config["training"]["max_lr"],
+                self.config["training"]["warmup_epochs"],
+                self.config["training"]["total_epochs"],
+                len(self.train_loader),
+            )
+        elif scheduler_type == "linear":
+            self.scheduler = utils.LinearLR(
+                self.config["training"]["min_lr"],
+                self.config["training"]["max_lr"],
+                self.config["training"]["warmup_epochs"],
+                self.config["training"]["total_epochs"],
+                len(self.train_loader),
+            )
+        else:
+            print(f"Unsupported scheduler type: {scheduler_type}. Choose 'cosine' or 'linear'.")
+            sys.exit(1)
 
     def _setup_logger(self, log_path):
         fieldnames = ["epoch", "iou_loss", "conf_loss", "cls_loss", "train_total_loss", "val_total_loss"]
@@ -148,9 +174,12 @@ class Trainer(object):
         self.avg_conf_loss = 0.0
         self.avg_cls_loss = 0.0
 
+        use_scheduler = self.config["training"]["use_scheduler"]
+
         with tqdm(self.train_loader, leave=False) as pbar:
             for iteration, (inputs, targets) in enumerate(pbar, 1):
-                self.scheduler.step(self.global_step, self.optimizer)
+                if use_scheduler and hasattr(self, "scheduler"):
+                    self.scheduler.step(self.global_step, self.optimizer)
 
                 inputs = inputs.to(self.device)
                 targets = [target.to(self.device) for target in targets]
@@ -179,7 +208,9 @@ class Trainer(object):
                         self.optimizer.step()
 
                     self.optimizer.zero_grad()
-                    self.ema.update(self.model)
+
+                    if self.config["training"]["use_ema"] and hasattr(self, "ema"):
+                        self.ema.update(self.model)
 
                 self.memory = f"{torch.cuda.memory_reserved() / 1E9:.3f}G" if self.device.type == "cuda" else "N/A"
                 current_str = ("%15s" * 2 + "%15.3f" * 3) % (
@@ -202,15 +233,21 @@ class Trainer(object):
         self.train_loss = self.avg_iou_loss + self.avg_conf_loss + self.avg_cls_loss
 
     def _validate(self):
-        self.ema.ema.eval()
+        if self.config["training"]["use_ema"] and hasattr(self, "ema"):
+            eval_model = self.ema.ema
+        else:
+            eval_model = self.model
+
+        eval_model.eval()
         self.val_loss = 0.0
+
         with torch.no_grad():
             with tqdm(self.val_loader, leave=False) as pbar:
                 for iteration, (inputs, targets) in enumerate(pbar, 1):
                     inputs = inputs.to(self.device)
                     targets = [target.to(self.device) for target in targets]
 
-                    outputs = self.ema.ema(inputs)
+                    outputs = eval_model(inputs)
 
                     iou_loss, conf_loss, cls_loss = self.loss_func(outputs, targets)
                     total_loss = iou_loss + conf_loss + cls_loss
@@ -223,11 +260,17 @@ class Trainer(object):
         self.val_loss /= iteration
 
     def _save_checkpoints(self, epoch):
+        if self.config["training"]["use_ema"] and hasattr(self, "ema"):
+            save_model = copy.deepcopy(self.ema.ema)
+        else:
+            save_model = copy.deepcopy(self.model)
+
         checkpoint = {
             "epoch": epoch,
-            "model": copy.deepcopy(self.ema.ema).state_dict(),
+            "model": save_model.state_dict(),
             "optimizer": self.optimizer.state_dict(),
         }
+
         torch.save(checkpoint, os.path.join(self.save_dir, "last.pt"))
 
         if self.has_validation_data:

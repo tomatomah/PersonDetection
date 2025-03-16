@@ -31,12 +31,23 @@ training:
   seed: 42
   total_epochs: 100
   batch_size: 32
+  use_ema: false
+  optimizer: "sgd" # sgd or adam
+  use_scheduler: true
+  scheduler: "cosine" # cosine or linear
+  warmup_epochs: 5 # warmup epochs (only use scheduler)
+  save_dir: "./outputs"
+
+  # only sgd optimizer
   min_lr: 0.0001 # initial learning rate
   max_lr: 0.01 # maximum learning rate
-  momentum: 0.937 # SGD momentum/Adam beta1
-  weight_decay: 0.0005 # optimizer weight decay
-  warmup_epochs: 5 # warmup epochs
-  save_dir: "./outputs"
+  momentum: 0.937 # sgd momentum/Adam beta1
+  weight_decay: 0.0005 # sgd optimizer weight decay
+
+  # only adam optimizer
+  lr: 0.001
+  beta1: 0.937
+  beta2: 0.999
   
 onnx:
   input_blob_name: "input"
