@@ -19,8 +19,8 @@ datasets:
   num_workers: 4
   input_height: 480
   input_width: 640
-  mosaic: 0.5 # image mosaic (probability)
-  mix_up: 0.5 # image mix-up (probability)
+  mosaic: 1.0 # image mosaic (probability)
+  mix_up: 1.0 # image mix-up (probability)
   flip_ud: 0.5 # image flip up-down (probability)
   flip_lr: 0.5 # image flip left-right (probability)
   hsv_h: 0.015 # image HSV-Hue augmentation (fraction)
@@ -32,20 +32,22 @@ training:
   total_epochs: 300
   batch_size: 64
   use_ema: true
-  optimizer: "adam" # sgd or adam
+  optimizer: "sgd" # sgd or adam
   use_scheduler: true
+  lr: 0.001
+
   scheduler: "cosine" # cosine or linear
+  min_lr: 0.0001 # initial learning rate
+  max_lr: 0.001 # maximum learning rate
   warmup_epochs: 5 # warmup epochs (only use scheduler)
+
   save_dir: "./outputs"
 
   # only sgd optimizer
-  min_lr: 0.0001 # initial learning rate
-  max_lr: 0.01 # maximum learning rate
   momentum: 0.937 # sgd momentum
   weight_decay: 0.0005 # sgd optimizer weight decay
 
   # only adam optimizer
-  lr: 0.001
   beta1: 0.937
   beta2: 0.999
   

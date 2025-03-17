@@ -251,6 +251,7 @@ class Trainer(object):
                     targets = [target.to(self.device) for target in targets]
 
                     outputs = eval_model(inputs)
+                    outputs = [torch.nan_to_num(output) for output in outputs]
 
                     iou_loss, conf_loss, cls_loss = self.loss_func(outputs, targets)
                     total_loss = iou_loss + conf_loss + cls_loss
