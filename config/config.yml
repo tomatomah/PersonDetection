@@ -30,7 +30,7 @@ datasets:
 training:
   seed: 42
   total_epochs: 300
-  batch_size: 32
+  batch_size: 64
   use_ema: true
   optimizer: "adam" # sgd or adam
   use_scheduler: true
