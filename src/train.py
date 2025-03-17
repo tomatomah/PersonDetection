@@ -198,13 +198,15 @@ class Trainer(object):
                 else:
                     total_loss.backward()
 
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
-
                 if self.global_step % self.accumulate == 0:
                     if self.use_fp16:
+                        self.scaler.unscale_(self.optimizer)
+                        torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+
                         self.scaler.step(self.optimizer)
                         self.scaler.update()
                     else:
+                        torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                         self.optimizer.step()
 
                     self.optimizer.zero_grad()
