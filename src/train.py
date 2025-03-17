@@ -186,6 +186,7 @@ class Trainer(object):
 
                 with torch.amp.autocast(device_type=self.device_type, enabled=self.use_fp16):
                     outputs = self.model(inputs)
+                    outputs = [torch.nan_to_num(output) for output in outputs]
                     iou_loss, conf_loss, cls_loss = self.loss_func(outputs, targets)
                     total_loss = iou_loss + conf_loss + cls_loss
 

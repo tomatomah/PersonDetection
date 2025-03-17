@@ -193,9 +193,7 @@ class CustomLoss(object):
                 .unsqueeze(dim=1)
                 .repeat(1, num_in_boxes_anchor, 1)
             )
-            pair_wise_cls_loss = F.binary_cross_entropy(
-                torch.clamp(cls_preds.sqrt(), 1e-6, 1.0 - 1e-6), gt_cls_per_image, reduction="none"
-            ).sum(-1)
+            pair_wise_cls_loss = F.binary_cross_entropy(cls_preds.sqrt(), gt_cls_per_image, reduction="none").sum(-1)
         del cls_preds
 
         cost = pair_wise_cls_loss + 3.0 * pair_wise_ious_loss + 100000.0 * (~is_in_boxes_and_center).float()
