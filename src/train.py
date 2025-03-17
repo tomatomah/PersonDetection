@@ -126,7 +126,7 @@ class Trainer(object):
         elif optimizer_type == "adam":
             self.optimizer = optim.Adam(
                 self.model.parameters(),
-                lr=self.config["training"]["lr"],
+                lr=self.config["training"]["min_lr"],
                 betas=(self.config["training"]["beta1"], self.config["training"]["beta2"]),
             )
         else:
