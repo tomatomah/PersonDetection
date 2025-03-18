@@ -20,7 +20,7 @@ def test_model(model_type: str, num_classes: int, input_size: tuple[int, int] = 
         outputs = model(x)
 
     # Calculate and display parameter count
-    params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    params = sum(p.numel() for p in model.parameters())
     print("\nModel Statistics:")
     print(f"- Parameters: {params:,}")
     print(f"- Model type: yolox-{model_type}")
