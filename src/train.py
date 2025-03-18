@@ -15,6 +15,7 @@ from dataset import CustomDataset
 from load_datasets import load_datasets
 from losses import CustomLoss
 from models import create_model
+from schedulefree import RAdamScheduleFree
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -129,30 +130,39 @@ class Trainer(object):
                 lr=self.config["training"]["min_lr"],
                 betas=(self.config["training"]["beta1"], self.config["training"]["beta2"]),
             )
+        elif optimizer_type == "radam_schedulefree":
+            self.optimizer = RAdamScheduleFree(
+                self.model.parameters(),
+                lr=self.config["training"]["learning_rate"],
+                betas=(self.config["training"]["beta1"], self.config["training"]["beta2"]),
+                eps=self.config["training"]["eps"],
+                weight_decay=self.config["training"]["weight_decay"],
+            )
         else:
-            print(f"Unsupported optimizer type: {optimizer_type}. Choose 'adam' or 'sgd'.")
+            print(f"Unsupported optimizer type: {optimizer_type}. Choose 'sgd', 'adam', or 'radam_schedulefree'.")
             sys.exit(1)
 
-        scheduler_type = self.config["training"]["scheduler"]
-        if scheduler_type == "cosine":
-            self.scheduler = utils.CosineLR(
-                self.config["training"]["min_lr"],
-                self.config["training"]["max_lr"],
-                self.config["training"]["warmup_epochs"],
-                self.config["training"]["total_epochs"],
-                len(self.train_loader),
-            )
-        elif scheduler_type == "linear":
-            self.scheduler = utils.LinearLR(
-                self.config["training"]["min_lr"],
-                self.config["training"]["max_lr"],
-                self.config["training"]["warmup_epochs"],
-                self.config["training"]["total_epochs"],
-                len(self.train_loader),
-            )
-        else:
-            print(f"Unsupported scheduler type: {scheduler_type}. Choose 'cosine' or 'linear'.")
-            sys.exit(1)
+        if self.config["training"]["use_scheduler"] and optimizer_type != "radam_schedulefree":
+            scheduler_type = self.config["training"]["scheduler"]
+            if scheduler_type == "cosine":
+                self.scheduler = utils.CosineLR(
+                    self.config["training"]["min_lr"],
+                    self.config["training"]["max_lr"],
+                    self.config["training"]["warmup_epochs"],
+                    self.config["training"]["total_epochs"],
+                    len(self.train_loader),
+                )
+            elif scheduler_type == "linear":
+                self.scheduler = utils.LinearLR(
+                    self.config["training"]["min_lr"],
+                    self.config["training"]["max_lr"],
+                    self.config["training"]["warmup_epochs"],
+                    self.config["training"]["total_epochs"],
+                    len(self.train_loader),
+                )
+            else:
+                print(f"Unsupported scheduler type: {scheduler_type}. Choose 'cosine' or 'linear'.")
+                sys.exit(1)
 
     def _setup_logger(self, log_path):
         fieldnames = ["epoch", "iou_loss", "conf_loss", "cls_loss", "train_total_loss", "val_total_loss"]
@@ -165,6 +175,10 @@ class Trainer(object):
 
     def _train_epoch(self, epoch):
         self.model.train()
+
+        if self.config["training"]["optimizer"] == "radam_schedulefree":
+            self.optimizer.train()
+
         self.optimizer.zero_grad()
 
         if epoch == (self.config["training"]["total_epochs"] + 1) - 15:
@@ -242,6 +256,10 @@ class Trainer(object):
             eval_model = self.model
 
         eval_model.eval()
+
+        if self.config["training"]["optimizer"] == "radam_schedulefree":
+            self.optimizer.eval()
+
         self.val_loss = 0.0
 
         with torch.no_grad():
@@ -274,6 +292,9 @@ class Trainer(object):
             "model": save_model.state_dict(),
             "optimizer": self.optimizer.state_dict(),
         }
+
+        if self.config["training"]["optimizer"] == "radam_schedulefree":
+            self.optimizer.eval()
 
         torch.save(checkpoint, os.path.join(self.save_dir, "last.pt"))
 

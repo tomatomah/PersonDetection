@@ -30,25 +30,29 @@ datasets:
 training:
   seed: 42
   total_epochs: 300
-  batch_size: 64
+  batch_size: 32
   use_ema: true
-  optimizer: "adam" # sgd or adam
-  use_scheduler: true
+  optimizer: "radam_schedulefree" # sgd, adam, or radam_schedulefree
+  use_scheduler: false
 
+  # RAdam ScheduleFree
+  learning_rate: 0.01
+  weight_decay: 0.0005
+  beta1: 0.9
+  beta2: 0.999
+  eps: 1.0e-8
+
+  # only use scheduler
   scheduler: "cosine" # cosine or linear
   min_lr: 0.0001 # initial learning rate
   max_lr: 0.01 # maximum learning rate
-  warmup_epochs: 5 # warmup epochs (only use scheduler)
-
-  save_dir: "./outputs"
+  warmup_epochs: 5 # warmup epochs
 
   # only sgd optimizer
   momentum: 0.937 # sgd momentum
-  weight_decay: 0.0005 # sgd optimizer weight decay
 
-  # only adam optimizer
-  beta1: 0.937
-  beta2: 0.999
+  save_dir: "./outputs"
+
   
 onnx:
   input_blob_name: "input"
