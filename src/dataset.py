@@ -271,7 +271,8 @@ class CustomDataset(Dataset):
         bboxes = np.array(bboxes, dtype=label.dtype)
 
         # Convert xmin,ymin,xmax,ymax -> cx,cy,w,h
-        mosaic_boxes = np.zeros((len(bboxes), 5), dtype=bboxes.dtype)
+        if len(bboxes.shape) != 2 or bboxes.shape[1] != 5:
+            mosaic_boxes = np.zeros((0, 5), dtype=bboxes.dtype)
         mosaic_boxes = data_utils.xyxy2cxcywh(bboxes)
 
         return mosaic_image, mosaic_boxes
