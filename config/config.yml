@@ -1,5 +1,5 @@
 model:
-  type: "nano"
+  type: "small"
   num_classes: 2
 
 datasets:
@@ -19,8 +19,8 @@ datasets:
   num_workers: 4
   input_height: 480
   input_width: 640
-  mosaic: 1.0 # image mosaic (probability)
-  mix_up: 1.0 # image mix-up (probability)
+  mosaic: 0.5 # image mosaic (probability)
+  mix_up: 0.5 # image mix-up (probability)
   flip_ud: 0.5 # image flip up-down (probability)
   flip_lr: 0.5 # image flip left-right (probability)
   hsv_h: 0.015 # image HSV-Hue augmentation (fraction)
@@ -30,13 +30,15 @@ datasets:
 training:
   seed: 42
   total_epochs: 300
-  batch_size: 32
+  batch_size: 64
+  mosaic_off_epoch: 15
   use_ema: true
   optimizer: "radam_schedulefree" # sgd, adam, or radam_schedulefree
+  learning_rate: 0.001 # initial learning rate
+  
   use_scheduler: false
 
   # RAdam ScheduleFree
-  learning_rate: 0.01
   weight_decay: 0.0005
   beta1: 0.937
   beta2: 0.999
@@ -44,7 +46,6 @@ training:
 
   # only use scheduler
   scheduler: "cosine" # cosine or linear
-  min_lr: 0.0001 # initial learning rate
   max_lr: 0.01 # maximum learning rate
   warmup_epochs: 5 # warmup epochs
 
