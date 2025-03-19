@@ -120,14 +120,14 @@ class Trainer(object):
         if optimizer_type == "sgd":
             self.optimizer = optim.SGD(
                 utils.set_params(self.model, self.config["training"]["weight_decay"]),
-                self.config["training"]["min_lr"],
+                self.config["training"]["learning_rate"],
                 self.config["training"]["momentum"],
                 nesterov=self.config["training"].get("nesterov", True),
             )
         elif optimizer_type == "adam":
             self.optimizer = optim.Adam(
                 self.model.parameters(),
-                lr=self.config["training"]["min_lr"],
+                lr=self.config["training"]["learning_rate"],
                 betas=(self.config["training"]["beta1"], self.config["training"]["beta2"]),
             )
         elif optimizer_type == "radam_schedulefree":
@@ -146,7 +146,7 @@ class Trainer(object):
             scheduler_type = self.config["training"]["scheduler"]
             if scheduler_type == "cosine":
                 self.scheduler = utils.CosineLR(
-                    self.config["training"]["min_lr"],
+                    self.config["training"]["learning_rate"],
                     self.config["training"]["max_lr"],
                     self.config["training"]["warmup_epochs"],
                     self.config["training"]["total_epochs"],
@@ -154,7 +154,7 @@ class Trainer(object):
                 )
             elif scheduler_type == "linear":
                 self.scheduler = utils.LinearLR(
-                    self.config["training"]["min_lr"],
+                    self.config["training"]["learning_rate"],
                     self.config["training"]["max_lr"],
                     self.config["training"]["warmup_epochs"],
                     self.config["training"]["total_epochs"],
@@ -181,7 +181,7 @@ class Trainer(object):
 
         self.optimizer.zero_grad()
 
-        if epoch == (self.config["training"]["total_epochs"] + 1) - 15:
+        if epoch == (self.config["training"]["total_epochs"] + 1) - self.config["training"]["mosaic_off_epoch"]:
             self.train_loader.dataset.config["mosaic"] = 0.0
 
         self.avg_iou_loss = 0.0
@@ -243,6 +243,8 @@ class Trainer(object):
 
                 self.global_step += 1
                 time.sleep(0.1)
+
+                del outputs, iou_loss, conf_loss, cls_loss, total_loss
 
         self.avg_iou_loss /= iteration
         self.avg_conf_loss /= iteration
@@ -339,8 +341,8 @@ class Trainer(object):
             self.log_file.flush()
 
             self._save_checkpoints(epoch)
+            torch.cuda.empty_cache()
 
-        torch.cuda.empty_cache()
         gc.collect()
 
         self.log_file.close()
