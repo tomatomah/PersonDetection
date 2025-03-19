@@ -25,6 +25,23 @@ def export_to_onnx(model: torch.nn.Module, dummy_input: torch.Tensor, save_path:
     )
 
 
+def get_file_size(file_path: str) -> str:
+    """
+    Get human-readable file size.
+    """
+    size_bytes = os.path.getsize(file_path)
+
+    # Convert to appropriate unit
+    if size_bytes < 1024:
+        return f"{size_bytes} bytes"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.2f} KB"
+    elif size_bytes < 1024 * 1024 * 1024:
+        return f"{size_bytes / (1024 * 1024):.2f} MB"
+    else:
+        return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
+
+
 def test_model_conversion(
     model_type: str, num_classes: int, input_size: tuple[int, int] = (640, 640), fp16: bool = False
 ) -> bool:
@@ -52,7 +69,9 @@ def test_model_conversion(
         else:
             export_to_onnx(model, dummy_input, onnx_path)
 
+        file_size = get_file_size(onnx_path)
         print("✓ PyTorch → ONNX conversion")
+        print(f"✓ ONNX file size: {file_size}")
         return True
 
     except Exception as e:
