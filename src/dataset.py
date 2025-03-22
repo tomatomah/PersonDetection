@@ -1,6 +1,6 @@
 from random import sample, shuffle
 
-from PIL import Image, ImageEnhance
+from PIL import Image
 import data_utils
 import numpy as np
 import torch
