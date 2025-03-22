@@ -1,21 +1,23 @@
 import sys
 
-import cv2
+from PIL import Image
 import numpy as np
 import torch
 
 
-def imread(image_path: str) -> np.ndarray:
+def imread(image_path: str) -> Image.Image:
     """
-    Reads an image file and returns it as an RGB array.
+    Reads an image file and returns it as a Pillow Image object.
     """
     try:
-        image_bgr = cv2.imread(image_path)
-        if image_bgr is None:
+        image = Image.open(image_path)
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+
+        if image.width == 0 or image.height == 0:
             raise ValueError(f"Failed to load image: {image_path}")
 
-        image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-        return image_rgb
+        return image
 
     except Exception as e:
         print(e)

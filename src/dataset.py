@@ -1,6 +1,6 @@
 from random import sample, shuffle
 
-import cv2
+from PIL import Image, ImageEnhance
 import data_utils
 import numpy as np
 import torch
@@ -52,16 +52,6 @@ class CustomDataset(Dataset):
         else:
             image, label = self._scale_image_with_aspect_ratio(image, label)
 
-        # Apply HSV augmentation
-        image = self._augment_hsv(image)
-
-        # Flip augmentations
-        if self.config["flip_lr"] and self._rand() < self.config["flip_lr"]:
-            image, label = self._flip_horizontal(image, label, image.shape[1])
-
-        if self.config["flip_ud"] and self._rand() < self.config["flip_ud"]:
-            image, label = self._flip_vertical(image, label, image.shape[0])
-
         # Final normalization
         image = self._normalize_and_transpose_image(image)
 
@@ -71,29 +61,29 @@ class CustomDataset(Dataset):
         """
         Normalize pixel values to [0-1] and transpose image from HWC to CHW format.
         """
+        if isinstance(image, Image.Image):
+            image = np.array(image)
+
         image = image.astype(np.float32) / 255.0
         image = np.transpose(image, (2, 0, 1))
         return image
 
     def _augment_hsv(self, image):
         """
-        Apply random HSV augmentation to the image using OpenCV.
+        Apply random HSV augmentation to the image using Pillow.
         """
-        # Convert scaling factors to absolute values
-        hue_shift = np.random.uniform(-self.config["hsv_h"], self.config["hsv_h"]) * 179  # Hue range is [0, 179]
-        sat_shift = np.random.uniform(-self.config["hsv_s"], self.config["hsv_s"]) * 255  # Sat range is [0, 255]
-        val_shift = np.random.uniform(-self.config["hsv_v"], self.config["hsv_v"]) * 255  # Val range is [0, 255]
+        hue_shift = np.random.uniform(-self.config["hsv_h"], self.config["hsv_h"])
+        sat_shift = np.random.uniform(-self.config["hsv_s"], self.config["hsv_s"])
+        val_shift = np.random.uniform(-self.config["hsv_v"], self.config["hsv_v"])
 
-        # Convert to HSV color space
-        image_hsv = cv2.cvtColor(image.astype(image.dtype), cv2.COLOR_RGB2HSV)
+        image = image.convert("HSV")
+        hue, sat, val = image.split()
+        hue = hue.point(lambda x: ((x + int(hue_shift * 255)) % 256))
+        sat = sat.point(lambda x: np.clip(x + int(sat_shift * 255), 0, 255))
+        val = val.point(lambda x: np.clip(x + int(val_shift * 255), 0, 255))
+        image = Image.merge("HSV", (hue, sat, val)).convert("RGB")
 
-        # Apply shifts with clipping
-        image_hsv[..., 0] = (image_hsv[..., 0] + hue_shift) % 180  # Hue wraps around
-        image_hsv[..., 1] = np.clip(image_hsv[..., 1] + sat_shift, 0, 255)  # Saturation
-        image_hsv[..., 2] = np.clip(image_hsv[..., 2] + val_shift, 0, 255)  # Value
-
-        # Convert back to RGB
-        return cv2.cvtColor(image_hsv, cv2.COLOR_HSV2RGB).astype(image.dtype)
+        return image
 
     def _get_mixup_data(self, image, label, idx):
         """
@@ -104,8 +94,14 @@ class CustomDataset(Dataset):
         sample_image, sample_label = self._pick_up_sample_data(sample_num=1, idx=idx)
         sample_image, sample_label = self._scale_image_with_aspect_ratio(sample_image[0], sample_label[0])
 
+        image_arr = np.array(image)
+        sample_image_arr = np.array(sample_image)
+
         # Blend images with equal weights
-        mixup_image = (image.astype(np.float32) * 0.5 + sample_image.astype(np.float32) * 0.5).astype(image.dtype)
+        mixup_image_arr = (image_arr.astype(np.float32) * 0.5 + sample_image_arr.astype(np.float32) * 0.5).astype(
+            np.uint8
+        )
+        mixup_image = Image.fromarray(mixup_image_arr)
 
         # Combine labels, handling empty label cases
         if len(label) == 0:
@@ -123,20 +119,22 @@ class CustomDataset(Dataset):
         Creates a gray background of target size and places the scaled image at a random position.
         """
         # Create gray background of target size (gray_value = 114)
-        dst_image = np.full((self.config["input_height"], self.config["input_width"], 3), 114, dtype=image.dtype)
+        dst_image = Image.new("RGB", (self.config["input_width"], self.config["input_height"]), (114, 114, 114))
         dst_label = np.zeros((label.shape[0], label.shape[1]), dtype=label.dtype)
 
-        # Calculate scaling rate maintaining aspect ratio
-        height, width = image.shape[:2]
+        width, height = image.size
+
         resize_rate = min((self.config["input_height"] / height), (self.config["input_width"] / width))
         resize_height = int(height * resize_rate)
         resize_width = int(width * resize_rate)
 
         # Resize image using appropriate interpolation method
         if (self.config["input_height"] * self.config["input_width"]) < (height * width):
-            resize_image = cv2.resize(image, (resize_width, resize_height), interpolation=cv2.INTER_LANCZOS4)
+            # Use LANCZOS for downsampling (equivalent to cv2.INTER_LANCZOS4)
+            resize_image = image.resize((resize_width, resize_height), Image.LANCZOS)
         else:
-            resize_image = cv2.resize(image, (resize_width, resize_height), interpolation=cv2.INTER_CUBIC)
+            # Use BICUBIC for upsampling (equivalent to cv2.INTER_CUBIC)
+            resize_image = image.resize((resize_width, resize_height), Image.BICUBIC)
 
         # Scale object coordinates
         dst_label[:, :4] = label[:, :4] * resize_rate
@@ -160,12 +158,17 @@ class CustomDataset(Dataset):
         else:
             pb = 0.0
 
+        # Get image dimensions
+        src_width, src_height = src_image.size
+        dst_width, dst_height = dst_image.size
+
         # Calculate paste coordinates based on position factor
-        dst_dx = int(pb * (dst_image.shape[1] - src_image.shape[1]))
-        dst_dy = int(pb * (dst_image.shape[0] - src_image.shape[0]))
+        dst_dx = int(pb * (dst_width - src_width))
+        dst_dy = int(pb * (dst_height - src_height))
 
         # Paste source image at calculated position
-        dst_image[dst_dy : dst_dy + src_image.shape[0], dst_dx : dst_dx + src_image.shape[1]] = src_image
+        dst_image.paste(src_image, (dst_dx, dst_dy))
+
         return dst_dx, dst_dy
 
     def _get_mosaic_data(self, image, label, idx):
@@ -189,7 +192,7 @@ class CustomDataset(Dataset):
         labels = [labels[idx] for idx in sample_indices]
 
         # Create the mosaic image
-        mosaic_image = np.zeros((self.config["input_height"], self.config["input_width"], 3), dtype=image.dtype)
+        mosaic_image = Image.new("RGB", (self.config["input_width"], self.config["input_height"]), (114, 114, 114))
 
         # Calculate the placement position for each image
         cutx = int(self.config["input_width"] * self._rand(0.3, 0.7))
@@ -200,22 +203,23 @@ class CustomDataset(Dataset):
         place_y = [0, cuty, cuty, 0]
 
         bboxes = []
-        for i, image in enumerate(images):
+        for i, img in enumerate(images):
             bbox = np.zeros_like(labels[i])
-            image_h, image_w = image.shape[:2]
+
+            image_w, image_h = img.size
 
             # Convert cx,cy,w,h -> xmin,ymin,xmax,ymax
             bbox = data_utils.cxcywh2xyxy(labels[i])
 
             # Flipping image horizontally
             if self._rand() < self.config["flip_lr"]:
-                image, bbox = self._flip_horizontal(image, bbox, image_w)
+                img, bbox = self._flip_horizontal(img, bbox, image_w)
 
             # Flipping image vertically
             if self._rand() < self.config["flip_ud"]:
-                image, bbox = self._flip_vertical(image, bbox, image_h)
+                img, bbox = self._flip_vertical(img, bbox, image_h)
 
-            # Calculate new aspect ratio by multiplying original aspect ratio (image_w/image_h)
+            # Calculate new aspect ratio by multiplying original aspect ratio
             new_aspect_ratio = (image_w / image_h) * (self._rand(0.7, 1.3))
 
             # Scale value for resizing the images
@@ -231,9 +235,9 @@ class CustomDataset(Dataset):
 
             # Choose interpolation method based on image size
             if (self.config["input_width"] * self.config["input_height"]) < (image_w * image_h):
-                resize_image = cv2.resize(image, (nw, nh), interpolation=cv2.INTER_LANCZOS4)
+                resize_image = img.resize((nw, nh), Image.LANCZOS)
             else:
-                resize_image = cv2.resize(image, (nw, nh), interpolation=cv2.INTER_CUBIC)
+                resize_image = img.resize((nw, nh), Image.BICUBIC)
 
             # Get the placement position for the image
             x1 = place_x[i]
@@ -254,7 +258,7 @@ class CustomDataset(Dataset):
             dst_height = min(nh, y2 - y1)
 
             # Place the image in the correct quadrant
-            mosaic_image[y1 : y1 + dst_height, x1 : x1 + dst_width] = resize_image[:dst_height, :dst_width]
+            mosaic_image.paste(resize_image.crop((0, 0, dst_width, dst_height)), (x1, y1))
 
             # Update the bounding box coordinates
             bbox[:, [0, 2]] = bbox[:, [0, 2]] * (nw / image_w) + x1
@@ -263,17 +267,21 @@ class CustomDataset(Dataset):
             # Select valid bounding boxes
             box_w = bbox[:, 2] - bbox[:, 0]
             box_h = bbox[:, 3] - bbox[:, 1]
-            bbox = bbox[np.logical_and(box_w > 3, box_h > 3)]  # w, h > 3pixel
+            bbox = bbox[np.logical_and(box_w > 1, box_h > 1)]  # w, h > 1pixel
 
             bboxes.append(bbox)
 
+        # Apply HSV augmentation
+        mosaic_image = self._augment_hsv(mosaic_image)
+
         bboxes = self._merge_bboxes(bboxes, cutx, cuty)
-        bboxes = np.array(bboxes, dtype=label.dtype)
+        bboxes = np.array(bboxes, dtype=np.float32)
 
         # Convert xmin,ymin,xmax,ymax -> cx,cy,w,h
         if len(bboxes.shape) != 2 or bboxes.shape[1] != 5:
             mosaic_boxes = np.zeros((0, 5), dtype=bboxes.dtype)
-        mosaic_boxes = data_utils.xyxy2cxcywh(bboxes)
+        else:
+            mosaic_boxes = data_utils.xyxy2cxcywh(bboxes)
 
         return mosaic_image, mosaic_boxes
 
@@ -360,14 +368,22 @@ class CustomDataset(Dataset):
         """
         Flip image horizontally and adjust bounding box coordinates accordingly.
         """
-        image = cv2.flip(image, 1)
+        # Flip horizontally using Pillow's method
+        image = image.transpose(Image.FLIP_LEFT_RIGHT)
+
+        # Adjust bounding box coordinates
         bbox[:, [0, 2]] = image_w - bbox[:, [2, 0]]
+
         return image, bbox
 
     def _flip_vertical(self, image, bbox, image_h):
         """
         Flip image vertically and adjust bounding box coordinates accordingly.
         """
-        image = cv2.flip(image, 0)
+        # Flip vertically using Pillow's method
+        image = image.transpose(Image.FLIP_TOP_BOTTOM)
+
+        # Adjust bounding box coordinates
         bbox[:, [1, 3]] = image_h - bbox[:, [3, 1]]
+
         return image, bbox

@@ -23,16 +23,16 @@ datasets:
   mix_up: 0.5 # image mix-up (probability)
   flip_ud: 0.5 # image flip up-down (probability)
   flip_lr: 0.5 # image flip left-right (probability)
-  hsv_h: 0.015 # image HSV-Hue augmentation (fraction)
+  hsv_h: 0.1 # image HSV-Hue augmentation (fraction)
   hsv_s: 0.7 # image HSV-Saturation augmentation (fraction)
   hsv_v: 0.4 # image HSV-Value augmentation (fraction)
 
 training:
   seed: 42
-  total_epochs: 300
+  total_epochs: 30
   batch_size: 64
   mosaic_off_epoch: 15
-  use_ema: true
+  use_ema: false
   optimizer: "radam_schedulefree" # sgd, adam, or radam_schedulefree
   learning_rate: 0.001 # initial learning rate
   
