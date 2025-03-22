@@ -325,7 +325,7 @@ class Trainer(object):
                 torch.save(checkpoint, os.path.join(self.save_dir, "best.pt"))
                 self.best_train_loss = self.train_loss
 
-        del checkpoint, model_state_dict
+        del checkpoint
         gc.collect()
 
     def train(self):
