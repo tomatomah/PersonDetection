@@ -29,11 +29,11 @@ datasets:
 
 training:
   seed: 42
-  total_epochs: 100
+  total_epochs: 300
   batch_size: 32
   mosaic_off_epoch: 15
   use_ema: true
-  optimizer: "adam" # sgd, adam, or radam_schedulefree
+  optimizer: "radam_schedulefree" # sgd, adam, or radam_schedulefree
   learning_rate: 0.001 # initial learning rate
   
   use_scheduler: false
