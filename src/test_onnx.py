@@ -43,7 +43,7 @@ def get_file_size(file_path: str) -> str:
 
 
 def test_model_conversion(
-    model_type: str, num_classes: int, input_size: tuple[int, int] = (640, 640), fp16: bool = False
+    model_size: str, num_classes: int, input_size: tuple[int, int] = (640, 640), fp16: bool = False
 ) -> bool:
     """
     Test PyTorch to ONNX model conversion.
@@ -51,17 +51,17 @@ def test_model_conversion(
     # Prepare model and input
     dtype = torch.float16 if fp16 else torch.float32
     dummy_input = torch.randn(1, 3, *input_size, dtype=dtype)
-    model = create_model(model_type, num_classes)
+    model = create_model(model_size, num_classes)
     model.eval()
 
     # Prepare test results
     precision = "FP16" if fp16 else "FP32"
     model_params = sum(p.numel() for p in model.parameters())
-    print(f"\nYOLO-{model_type} ({precision}):")
+    print(f"\nYOLO-{model_size} ({precision}):")
     print(f"✓ Model size: {model_params:,} parameters")
 
     # Try ONNX conversion
-    onnx_path = f"test_{model_type}_{precision.lower()}.onnx"
+    onnx_path = f"test_{model_size}_{precision.lower()}.onnx"
     try:
         if fp16:
             with torch.autocast("cpu", dtype=torch.float16):
@@ -84,7 +84,7 @@ def test_model_conversion(
 
 
 def main():
-    model_types = ["small", "medium", "large"]
+    model_sizes = ["nano", "tiny", "small", "medium", "large", "xlarge"]
     num_classes = 80
     input_size = (640, 640)
 
@@ -93,9 +93,9 @@ def main():
     print(f"- Classes: {num_classes}")
 
     results = []
-    for model_type in model_types:
+    for model_size in model_sizes:
         for fp16 in [False, True]:
-            result = test_model_conversion(model_type, num_classes, input_size, fp16)
+            result = test_model_conversion(model_size, num_classes, input_size, fp16)
             results.append(result)
 
     if all(results):

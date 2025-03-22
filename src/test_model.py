@@ -2,18 +2,18 @@ import torch
 from models import create_model
 
 
-def test_model(model_type: str, num_classes: int, input_size: tuple[int, int] = (640, 640)) -> None:
+def test_model(model_size: str, num_classes: int, input_size: tuple[int, int] = (640, 640)) -> None:
     """
     Run yolo model test and display results.
     """
-    print(f"\n{'='*20} Testing {model_type.upper()} Model {'='*20}")
+    print(f"\n{'='*20} Testing {model_size.upper()} Model {'='*20}")
 
     # Create input tensor
     x = torch.randn(1, 3, input_size[0], input_size[1])
     print(f"Input shape: {tuple(x.shape)}")
 
     # Create model and run inference
-    model = create_model(model_type, num_classes)
+    model = create_model(model_size, num_classes)
     model.eval()
 
     with torch.no_grad():
@@ -23,7 +23,7 @@ def test_model(model_type: str, num_classes: int, input_size: tuple[int, int] = 
     params = sum(p.numel() for p in model.parameters())
     print("\nModel Statistics:")
     print(f"- Parameters: {params:,}")
-    print(f"- Model type: yolo-{model_type}")
+    print(f"- Model size: yolo-{model_size}")
     print(f"- Number of classes: {num_classes}")
 
     # Display output shapes
@@ -33,14 +33,14 @@ def test_model(model_type: str, num_classes: int, input_size: tuple[int, int] = 
 
 
 def main():
-    # Model types to test
-    model_types = ["small", "medium", "large"]
+    # Model sizes to test
+    model_sizes = ["nano", "tiny", "small", "medium", "large", "xlarge"]
     num_classes = 80
     input_size = (640, 640)
 
     # Run tests for each model
-    for model_type in model_types:
-        test_model(model_type, num_classes, input_size)
+    for model_size in model_sizes:
+        test_model(model_size, num_classes, input_size)
 
     print("\nAll model tests completed!")
 

@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from typing import List, Tuple
 
 
 class CB(nn.Module):
@@ -261,26 +260,66 @@ class YOLOModel(nn.Module):
         self.num_classes = num_classes
 
     def _get_config(self, size):
-        if size == "s":  # small
-            return {
+        """
+        Returns channel and depth configurations based on model size.
+
+        Supported sizes:
+        - 'n': nano
+        - 't': tiny
+        - 's': small
+        - 'm': medium
+        - 'l': large
+        - 'x': xlarge
+        """
+        configs = {
+            "n": {  # nano
+                "channels": [3, 16, 32, 64, 128, 256],
+                "depth": [1, 1, 1, 1, 1],
+            },
+            "t": {  # tiny
+                "channels": [3, 24, 48, 96, 192, 384],
+                "depth": [1, 1, 1, 1, 1],
+            },
+            "s": {  # small
                 "channels": [3, 32, 64, 128, 256, 512],
                 "depth": [1, 1, 1, 1, 1],
-            }
-        elif size == "m":  # medium
-            return {
+            },
+            "m": {  # medium
                 "channels": [3, 48, 96, 192, 384, 768],
                 "depth": [2, 2, 2, 2, 2],
-            }
-        elif size == "l":  # large
-            return {
+            },
+            "l": {  # large
                 "channels": [3, 64, 128, 256, 512, 1024],
                 "depth": [3, 3, 3, 3, 3],
-            }
-        else:
-            raise ValueError(f"Unsupported model size: {size}. Choose 's', 'm', or 'l'")
+            },
+            "x": {  # xlarge
+                "channels": [3, 80, 160, 320, 640, 1280],
+                "depth": [3, 3, 3, 3, 3],
+            },
+        }
+
+        if size not in configs:
+            supported = ", ".join([f"'{k}'" for k in configs.keys()])
+            raise ValueError(f"Unsupported model size: '{size}'. Supported sizes: {supported}")
+
+        return configs[size]
 
     def forward(self, x):
         return self.head(self.neck(self.backbone(x)))
+
+
+def yolo_n(num_classes=80):
+    """
+    Creates a nano YOLO model.
+    """
+    return YOLOModel(num_classes, size="n")
+
+
+def yolo_t(num_classes=80):
+    """
+    Creates a tiny YOLO model.
+    """
+    return YOLOModel(num_classes, size="t")
 
 
 def yolo_s(num_classes=80):
@@ -302,3 +341,17 @@ def yolo_l(num_classes=80):
     Creates a large YOLO model.
     """
     return YOLOModel(num_classes, size="l")
+
+
+def yolo_x(num_classes=80):
+    """
+    Creates an xlarge YOLO model.
+    """
+    return YOLOModel(num_classes, size="x")
+
+
+def yolo(num_classes=80):
+    """
+    Creates the default YOLO model.
+    """
+    return yolo_s(num_classes)
