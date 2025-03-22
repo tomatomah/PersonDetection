@@ -286,21 +286,32 @@ class CustomLoss(object):
         matching_matrix = torch.zeros_like(cost, dtype=torch.uint8)
 
         n_candidate_k = min(10, pair_wise_ious.size(1))
-        topk_ious, _ = torch.topk(pair_wise_ious, n_candidate_k, dim=1)
-        dynamic_ks = torch.clamp(topk_ious.sum(1).int(), min=1)
-        for gt_idx in range(num_gt):
-            _, pos_idx = torch.topk(cost[gt_idx], k=dynamic_ks[gt_idx], largest=False)
-            matching_matrix[gt_idx][pos_idx] = 1
+        if n_candidate_k != 0:
+            topk_ious, _ = torch.topk(pair_wise_ious, n_candidate_k, dim=1)
+            dynamic_ks = torch.clamp(topk_ious.sum(1).int(), min=1)
 
-        del topk_ious, dynamic_ks, pos_idx
+            for gt_idx in range(num_gt):
+                if cost[gt_idx].numel() > 0:
+                    _, pos_idx = torch.topk(cost[gt_idx], k=dynamic_ks[gt_idx], largest=False)
+                    matching_matrix[gt_idx][pos_idx] = 1
+
+            del topk_ious, dynamic_ks, pos_idx
+        else:
+            pos_idx = None
+            for gt_idx in range(num_gt):
+                if cost[gt_idx].numel() > 0:
+                    _, pos_idx = torch.topk(cost[gt_idx], k=1, largest=False)
+                    matching_matrix[gt_idx][pos_idx] = 1
+            if pos_idx is not None:
+                del pos_idx
 
         anchor_matching_gt = matching_matrix.sum(0)
-        # deal with the case that one anchor matches multiple ground-truths
-        if anchor_matching_gt.max() > 1:
+        if (anchor_matching_gt > 1).sum() > 0:
             multiple_match_mask = anchor_matching_gt > 1
             _, cost_argmin = torch.min(cost[:, multiple_match_mask], dim=0)
             matching_matrix[:, multiple_match_mask] *= 0
             matching_matrix[cost_argmin, multiple_match_mask] = 1
+
         fg_mask_inboxes = anchor_matching_gt > 0
         num_fg = fg_mask_inboxes.sum().item()
 
