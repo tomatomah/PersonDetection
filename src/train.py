@@ -91,7 +91,6 @@ class Trainer(object):
         else:
             val_dataset = CustomDataset([], [], self.config["datasets"], training=False)
 
-        persistent_workers = self.config["datasets"]["num_workers"] > 0
         prefetch_factor = 2 if self.config["datasets"]["num_workers"] > 0 else None
 
         self.train_loader = DataLoader(
@@ -100,7 +99,6 @@ class Trainer(object):
             shuffle=True,
             num_workers=self.config["datasets"]["num_workers"],
             pin_memory=self.use_cuda,
-            persistent_workers=persistent_workers,
             collate_fn=CustomDataset.custom_collate_fn,
             prefetch_factor=prefetch_factor,
         )
@@ -112,7 +110,6 @@ class Trainer(object):
                 shuffle=False,
                 num_workers=self.config["datasets"]["num_workers"],
                 pin_memory=self.use_cuda,
-                persistent_workers=persistent_workers,
                 collate_fn=CustomDataset.custom_collate_fn,
                 prefetch_factor=prefetch_factor,
             )
@@ -257,6 +254,11 @@ class Trainer(object):
                 self.global_step += 1
 
                 del inputs, targets, outputs, iou_loss, conf_loss, cls_loss, total_loss
+
+                if self.global_step % 10 == 0:  # every 10 batches
+                    if self.use_cuda:
+                        torch.cuda.empty_cache()
+                    gc.collect()
 
         self.avg_iou_loss /= iteration
         self.avg_conf_loss /= iteration
