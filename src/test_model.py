@@ -4,7 +4,7 @@ from models import create_model
 
 def test_model(model_type: str, num_classes: int, input_size: tuple[int, int] = (640, 640)) -> None:
     """
-    Run yolox model test and display results.
+    Run yolo model test and display results.
     """
     print(f"\n{'='*20} Testing {model_type.upper()} Model {'='*20}")
 
@@ -23,7 +23,7 @@ def test_model(model_type: str, num_classes: int, input_size: tuple[int, int] = 
     params = sum(p.numel() for p in model.parameters())
     print("\nModel Statistics:")
     print(f"- Parameters: {params:,}")
-    print(f"- Model type: yolox-{model_type}")
+    print(f"- Model type: yolo-{model_type}")
     print(f"- Number of classes: {num_classes}")
 
     # Display output shapes
@@ -34,7 +34,7 @@ def test_model(model_type: str, num_classes: int, input_size: tuple[int, int] = 
 
 def main():
     # Model types to test
-    model_types = ["nano", "tiny", "small", "medium", "large", "xlarge"]
+    model_types = ["small", "medium", "large"]
     num_classes = 80
     input_size = (640, 640)
 

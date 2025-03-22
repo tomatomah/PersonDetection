@@ -84,7 +84,7 @@ def test_model_conversion(
 
 
 def main():
-    model_types = ["nano", "tiny", "small", "medium", "large", "xlarge"]
+    model_types = ["small", "medium", "large"]
     num_classes = 80
     input_size = (640, 640)
 
