@@ -56,6 +56,10 @@ class Trainer(object):
         self.start_epoch = 1
         self.global_step = 0
 
+        if self.use_cuda:
+            self.max_memory_allocated = 0
+            torch.cuda.reset_peak_memory_stats()
+
     def _set_seed(self):
         random.seed(self.config["training"]["seed"])
         np.random.seed(self.config["training"]["seed"])
@@ -67,6 +71,9 @@ class Trainer(object):
             torch.backends.cudnn.deterministic = True
 
     def _init_model(self):
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
         self.model = create_model(self.config["model"]["type"], self.config["model"]["num_classes"])
         self.model.to(self.device)
 
@@ -84,10 +91,8 @@ class Trainer(object):
         else:
             val_dataset = CustomDataset([], [], self.config["datasets"], training=False)
 
-        if self.config["datasets"]["num_workers"] > 0:
-            persistent_workers = True
-        else:
-            persistent_workers = False
+        persistent_workers = self.config["datasets"]["num_workers"] > 0
+        prefetch_factor = 2 if self.config["datasets"]["num_workers"] > 0 else None
 
         self.train_loader = DataLoader(
             train_dataset,
@@ -97,6 +102,7 @@ class Trainer(object):
             pin_memory=self.use_cuda,
             persistent_workers=persistent_workers,
             collate_fn=CustomDataset.custom_collate_fn,
+            prefetch_factor=prefetch_factor,
         )
 
         if self.has_validation_data:
@@ -108,6 +114,7 @@ class Trainer(object):
                 pin_memory=self.use_cuda,
                 persistent_workers=persistent_workers,
                 collate_fn=CustomDataset.custom_collate_fn,
+                prefetch_factor=prefetch_factor,
             )
         else:
             self.val_loader = None
@@ -126,17 +133,17 @@ class Trainer(object):
             )
         elif optimizer_type == "adam":
             self.optimizer = optim.Adam(
-                self.model.parameters(),
+                utils.set_params(self.model, self.config["training"]["weight_decay"]),
                 lr=self.config["training"]["learning_rate"],
                 betas=(self.config["training"]["beta1"], self.config["training"]["beta2"]),
             )
         elif optimizer_type == "radam_schedulefree":
             self.optimizer = RAdamScheduleFree(
-                self.model.parameters(),
+                utils.set_params(self.model, self.config["training"]["weight_decay"]),
                 lr=self.config["training"]["learning_rate"],
                 betas=(self.config["training"]["beta1"], self.config["training"]["beta2"]),
                 eps=self.config["training"]["eps"],
-                weight_decay=self.config["training"]["weight_decay"],
+                weight_decay=0.0,  # Set to 0 because parameter filtering has already been applied
             )
         else:
             print(f"Unsupported optimizer type: {optimizer_type}. Choose 'sgd', 'adam', or 'radam_schedulefree'.")
@@ -179,8 +186,6 @@ class Trainer(object):
         if self.config["training"]["optimizer"] == "radam_schedulefree":
             self.optimizer.train()
 
-        self.optimizer.zero_grad()
-
         if epoch == (self.config["training"]["total_epochs"] + 1) - self.config["training"]["mosaic_off_epoch"]:
             self.train_loader.dataset.config["mosaic"] = 0.0
 
@@ -195,8 +200,10 @@ class Trainer(object):
                 if use_scheduler and hasattr(self, "scheduler"):
                     self.scheduler.step(self.global_step, self.optimizer)
 
-                inputs = inputs.to(self.device)
-                targets = [target.to(self.device) for target in targets]
+                self.optimizer.zero_grad(set_to_none=True)
+
+                inputs = inputs.to(self.device, non_blocking=True)
+                targets = [target.to(self.device, non_blocking=True) for target in targets]
 
                 with torch.amp.autocast(device_type=self.device_type, enabled=self.use_fp16):
                     outputs = self.model(inputs)
@@ -224,12 +231,18 @@ class Trainer(object):
                         torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                         self.optimizer.step()
 
-                    self.optimizer.zero_grad()
+                    self.optimizer.zero_grad(set_to_none=True)
 
                     if self.config["training"]["use_ema"] and hasattr(self, "ema"):
                         self.ema.update(self.model)
 
-                self.memory = f"{torch.cuda.memory_reserved() / 1E9:.3f}G" if self.device.type == "cuda" else "N/A"
+                if self.device.type == "cuda":
+                    current_memory = torch.cuda.memory_reserved() / 1e9
+                    self.max_memory_allocated = max(self.max_memory_allocated, current_memory)
+                    self.memory = f"{current_memory:.3f}G"
+                else:
+                    self.memory = "N/A"
+
                 current_str = ("%15s" * 2 + "%15.3f" * 3) % (
                     f"{epoch}/{self.config['training']['total_epochs']}",
                     self.memory,
@@ -242,9 +255,8 @@ class Trainer(object):
                 pbar.set_postfix(loss=f"{total_loss.item():.3f}")
 
                 self.global_step += 1
-                time.sleep(0.1)
 
-                del outputs, iou_loss, conf_loss, cls_loss, total_loss
+                del inputs, targets, outputs, iou_loss, conf_loss, cls_loss, total_loss
 
         self.avg_iou_loss /= iteration
         self.avg_conf_loss /= iteration
@@ -267,8 +279,8 @@ class Trainer(object):
         with torch.no_grad():
             with tqdm(self.val_loader, leave=False) as pbar:
                 for iteration, (inputs, targets) in enumerate(pbar, 1):
-                    inputs = inputs.to(self.device)
-                    targets = [target.to(self.device) for target in targets]
+                    inputs = inputs.to(self.device, non_blocking=True)
+                    targets = [target.to(self.device, non_blocking=True) for target in targets]
 
                     outputs = eval_model(inputs)
                     outputs = [torch.nan_to_num(output) for output in outputs]
@@ -279,15 +291,16 @@ class Trainer(object):
 
                     pbar.set_description("[Validating]")
                     pbar.set_postfix(loss=total_loss.item())
-                    time.sleep(0.1)
+
+                    del inputs, targets, outputs, iou_loss, conf_loss, cls_loss, total_loss
 
         self.val_loss /= iteration
 
     def _save_checkpoints(self, epoch):
         if self.config["training"]["use_ema"] and hasattr(self, "ema"):
-            save_model = copy.deepcopy(self.ema.ema)
+            save_model = self.ema.ema
         else:
-            save_model = copy.deepcopy(self.model)
+            save_model = self.model
 
         checkpoint = {
             "epoch": epoch,
@@ -297,6 +310,9 @@ class Trainer(object):
 
         if self.config["training"]["optimizer"] == "radam_schedulefree":
             self.optimizer.eval()
+
+        if self.use_cuda:
+            torch.cuda.empty_cache()
 
         torch.save(checkpoint, os.path.join(self.save_dir, "last.pt"))
 
@@ -308,6 +324,9 @@ class Trainer(object):
             if self.train_loss <= self.best_train_loss:
                 torch.save(checkpoint, os.path.join(self.save_dir, "best.pt"))
                 self.best_train_loss = self.train_loss
+
+        del checkpoint, model_state_dict
+        gc.collect()
 
     def train(self):
         print(("\n" + "%15s" * 5) % ("epoch", "memory", "iou_loss", "conf_loss", "cls_loss"))
@@ -341,9 +360,11 @@ class Trainer(object):
             self.log_file.flush()
 
             self._save_checkpoints(epoch)
-            torch.cuda.empty_cache()
 
-        gc.collect()
+            if self.use_cuda:
+                torch.cuda.empty_cache()
+
+            gc.collect()
 
         self.log_file.close()
 
