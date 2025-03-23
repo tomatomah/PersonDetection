@@ -500,8 +500,8 @@ class Detector(object):
                 # file_name = os.path.splitext(os.path.basename(self.config["detecting"]["movie_path"]))[0]
                 # frame_index = self.frame_index - 1
                 # digit = len(str(self.frame_length))
-                # output_image_path = (
-                #     self.save_movie_dir + file_name + "_frame_" + str(frame_index).zfill(digit) + ".jpg"
+                # output_image_path = os.path.join(
+                #     self.save_movie_dir, file_name + "_frame_" + str(frame_index).zfill(digit) + ".jpg"
                 # )
                 # cv2.imwrite(output_image_path, cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
                 self.video_writer.write(cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
