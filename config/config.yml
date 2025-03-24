@@ -1,5 +1,5 @@
 model:
-  type: "nano"
+  type: "small"
   num_classes: 2
 
 datasets:
@@ -34,7 +34,7 @@ training:
   mosaic_off_epoch: 15
   use_ema: true
   optimizer: "radam_schedulefree" # sgd, adam, or radam_schedulefree
-  learning_rate: 0.005 # initial learning rate
+  learning_rate: 0.0001 # initial learning rate
   
   use_scheduler: false
 
