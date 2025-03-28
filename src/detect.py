@@ -21,9 +21,8 @@ class DetectionResult(object):
         self.center_y = -1
         self.width = -1
         self.height = -1
-        self.prob = -1.0
-        self.objectness = -1.0
-        self.class_prob = -1.0
+
+        self.score = -1.0  # Final probability (objectness * class probability)
         self.class_id = -1
 
 
@@ -44,6 +43,7 @@ class Detector(object):
         self.cap = None
         self.frame_length = 0
         self.video_writer = None
+        self.postprocessing = self.config["onnx"]["postprocessing"]
 
         self._init_model()
         self._init_data()
@@ -77,11 +77,10 @@ class Detector(object):
                 self.image_list.append(image_path)
 
         self.frame_length = len(self.image_list)
-
         os.makedirs(self.save_image_dir, exist_ok=True)
 
     def _set_movie(self):
-        target_ext = ".mp4"
+        target_ext = (".mp4", ".avi")
         file_name, ext = os.path.splitext(os.path.basename(self.config["detecting"]["movie_path"]))
         if not ext.lower().endswith(target_ext):
             print("Movie file type is not supported")
@@ -146,26 +145,23 @@ class Detector(object):
         )
 
     def _determine_model_input_shape(self, image_width, image_height):
-        # Calculate the remainder when dividing the height and width by a specific multiple
+        """
+        Calculate input dimensions padded to model stride multiple (usually 32).
+        """
+        # Calculate the remainder when dividing by stride (32)
         height_remainder = image_height % 32
         width_remainder = image_width % 32
 
-        # If there is a remainder in the height direction
+        # Pad height to next multiple of 32 if needed
         if height_remainder != 0:
-            # Calculate the quotient when dividing by the multiple
             height_quotient = image_height // 32
-
-            # Calculate the nearest multiple to the height value
             dst_image_height = 32 * (height_quotient + 1)
         else:
             dst_image_height = image_height
 
-        # If there is a remainder in the width direction
+        # Pad width to next multiple of 32 if needed
         if width_remainder != 0:
-            # Calculate the quotient when dividing by the multiple
             width_quotient = image_width // 32
-
-            # Calculate the nearest multiple to the width value
             dst_image_width = 32 * (width_quotient + 1)
         else:
             dst_image_width = image_width
@@ -175,7 +171,7 @@ class Detector(object):
     def _preprocess_image(self, image):
         resize_images = []
         for scale in self.config["detecting"]["scale_list"]:
-            if not (0.0 < scale <= 1.0):
+            if not (0.0 < scale <= 2.0):
                 print("Scale value is not supported.")
                 sys.exit(1)
 
@@ -202,15 +198,20 @@ class Detector(object):
         return input_images
 
     def _sigmoid(self, x):
-        # Consider overflow
+        # Handle overflow by splitting computation based on sign
         mask = x >= 0
-        y = np.zeros_like(x)  # Create an array initialized with 0s having the same shape as x
-        y[mask] = 1.0 / (1 + np.exp(-x[mask]))  # x >= 0, f(x) = 1/(1+e^(-x))
-        y[~mask] = np.exp(x[~mask]) / (1 + np.exp(x[~mask]))  # x < 0, f(x) = e^x/(e^x+1)
+        y = np.zeros_like(x)  # Create array initialized with zeros
+        y[mask] = 1.0 / (1 + np.exp(-x[mask]))  # x >= 0: 1/(1+e^(-x))
+        y[~mask] = np.exp(x[~mask]) / (1 + np.exp(x[~mask]))  # x < 0: e^x/(e^x+1)
         return y
 
     def _decode_outputs(self, outputs):
-        # List to store height and width of each feature map (e.g., for 480×640 input: [(60,80), (30,40), (15,20)])
+        """
+        Decode raw model outputs into bounding box coordinates and confidence scores.
+        (It's used when the model doesn't include post-processing.)
+        """
+        # List to store height and width of each feature map
+        # (e.g., for 480×640 input: [(60,80), (30,40), (15,20)])
         hw_list = []
 
         # Flatten each feature map
@@ -267,13 +268,11 @@ class Detector(object):
         return decoded_data
 
     def _get_detect_results(self, decode_data_list):
-        # Initialize array to store all detection results
-        # Format: [cx, cy, width, height, ltx, lty, rbx, rby, objectness, class_prob, prob, class_pred]
-        detections = np.zeros((0, 12))
+        # Format: [cx, cy, width, height, ltx, lty, rbx, rby, prob, class_pred]
+        detections = np.zeros((0, 10))
 
         # Process each scale's decoded data
         for scale_index, decode_data in enumerate(decode_data_list):
-            # Create array for bounding box information
             # Format: [cx, cy, width, height, ltx, lty, rbx, rby]
             bbox_info = np.zeros((decode_data.shape[0], 8), np.float32)
 
@@ -307,8 +306,8 @@ class Detector(object):
             prob_mask = prob[:, 0] >= self.config["detecting"]["detect_threshold"]
 
             # Combine all detection information
-            # Format: [cx, cy, width, height, ltx, lty, rbx, rby, objectness, class_prob, prob, class_pred]
-            detect_data = np.concatenate((bbox_info, objectness, class_prob, prob, class_pred), axis=1)
+            # Format: [cx, cy, width, height, ltx, lty, rbx, rby, prob, class_pred]
+            detect_data = np.concatenate((bbox_info, prob, class_pred), axis=1)
 
             # Filter detections using confidence threshold
             detect_data = detect_data[prob_mask]
@@ -331,9 +330,7 @@ class Detector(object):
             detections = np.concatenate([detections, detect_data], axis=0)
 
         # Apply Non-Maximum Suppression to remove overlapping detections
-        nms_index = self._non_maximum_supression(
-            detections[:, 4:8], detections[:, 10], detections[:, 11].astype(np.int32)
-        )
+        nms_index = self.apply_class_wise_nms(detections[:, 4:8], detections[:, 8], detections[:, 9].astype(np.int32))
 
         # Filter detections using NMS indices (if any detections remain)
         if len(detections) != 0:
@@ -351,25 +348,23 @@ class Detector(object):
             detection_result.left_top_y = int(result[5])
             detection_result.right_bottom_x = int(result[6])
             detection_result.right_bottom_y = int(result[7])
-            detection_result.objectness = float(result[8])
-            detection_result.class_prob = float(result[9])
-            detection_result.prob = float(result[10])
-            detection_result.class_id = int(result[11])
+            detection_result.score = float(result[8])
+            detection_result.class_id = int(result[9])
 
             results.append(detection_result)
 
         return results
 
-    def _non_maximum_supression(self, boxes, scores, class_ids):
+    def apply_class_wise_nms(self, boxes, scores, class_ids):
         # Get unique class IDs
         unique_classes = np.unique(class_ids)
 
-        # Initialize array to store indices of kept boxes
+        # Initialize list to store kept box indices
         keep_indices = []
 
         # Process each class separately
         for class_id in unique_classes:
-            # Get indices of boxes for this class
+            # Get indices for this class
             class_mask = class_ids == class_id
             class_indices = np.where(class_mask)[0]
 
@@ -377,46 +372,47 @@ class Detector(object):
             class_boxes = boxes[class_mask]
             class_scores = scores[class_mask]
 
-            # Apply NMS for this class
-            class_keep = self._standard_nms(class_boxes, class_scores)
+            # Apply hard NMS to this class
+            class_keep = self._apply_hard_nms(class_boxes, class_scores)
 
             # Map back to original indices
             keep_indices.extend(class_indices[class_keep])
 
         return np.array(keep_indices)
 
-    def _standard_nms(self, boxes, scores):
-        # Get the indices of the detection bounding boxes when sorted in ascending order of scores
-        idxs = scores.argsort()
+    def _apply_hard_nms(self, boxes, scores):
+        # Sort indices by score (descending)
+        idxs = scores.argsort()[::-1]
 
-        # Variable to store the detection bounding boxes that will be kept after NMS processing
+        # List to store kept indices
         keep = []
 
         while idxs.size > 0:
-            # Store the index of the detection bounding box with the highest score
-            max_score_index = idxs[-1]
+            # Get current highest-scoring box
+            current_idx = idxs[0]
+            current_box = boxes[current_idx][None, :]  # Add batch dimension
 
-            # Store the coordinates of the detection bounding box with the highest score
-            # max_score_box => (1, 4)
-            max_score_box = boxes[max_score_index][None, :]
+            # Add to keep list
+            keep.append(current_idx)
 
-            # Append the index of the selected detection bounding box to keep
-            keep.append(max_score_index)
-
+            # Exit if no more boxes
             if idxs.size == 1:
                 break
 
-            # Remove the index of the selected detection bounding box
-            idxs = idxs[:-1]
+            # Remove current box from candidates
+            remaining_idxs = idxs[1:]
 
-            # Store the coordinates of the remaining detection bounding boxes that are not selected
-            other_boxes = boxes[idxs]
+            # Get remaining boxes
+            remaining_boxes = boxes[remaining_idxs]
 
-            # Calculate the IoU between the selected detection bounding box and the remaining detection bounding boxes
-            ious = data_utils.compute_iou(max_score_box, other_boxes)
+            # Calculate IoU between current box and all remaining boxes
+            ious = data_utils.compute_iou(current_box, remaining_boxes)
 
-            # Keep only the detection bounding boxes with IoU below the threshold in idxs
-            idxs = idxs[ious < self.config["detecting"]["iou_threshold"]]
+            # Get indices of boxes to keep (IoU below threshold)
+            low_iou_mask = ious < self.config["detecting"]["iou_threshold"]
+
+            # Update indices list, keeping only low-IoU boxes
+            idxs = remaining_idxs[low_iou_mask]
 
         return np.array(keep)
 
@@ -426,30 +422,104 @@ class Detector(object):
 
         input_images = self._preprocess_image(image)
 
-        decode_data_list = []
-        for input_image in input_images:
-            outputs = self.model.run(None, {self.config["onnx"]["input_blob_name"]: input_image})
+        results = []
+        if self.postprocessing:
+            all_detections = []
 
-            decode_data = self._decode_outputs(outputs)
-            decode_data_list.append(decode_data)
+            for scale_index, input_image in enumerate(input_images):
+                outputs = self.model.run(None, {self.config["onnx"]["input_blob_name"]: input_image})
 
-        results = self._get_detect_results(decode_data_list)
+                output_map = {output.name: i for i, output in enumerate(self.model.get_outputs())}
+                boxes = outputs[output_map["boxes"]]
+                scores = outputs[output_map["scores"]]
+                class_ids = outputs[output_map["class_ids"]]
+                valid_detections = outputs[output_map["valid_detections"]]
+
+                num_valid = valid_detections[0]
+
+                if num_valid > 0:
+                    valid_boxes = boxes[0, :num_valid]
+                    valid_scores = scores[0, :num_valid]
+                    valid_classes = class_ids[0, :num_valid].astype(np.int32)
+
+                    inv_scale = self.inv_scales[scale_index]
+                    valid_boxes = valid_boxes * inv_scale
+
+                    # Format detections for NMS
+                    # [ltx, lty, rbx, rby, score, class_id]
+                    detections = np.concatenate(
+                        [
+                            valid_boxes,  # [ltx, lty, rbx, rby]
+                            valid_scores[:, np.newaxis],  # [score]
+                            valid_classes[:, np.newaxis],  # [class_id]
+                        ],
+                        axis=1,
+                    )
+
+                    all_detections.append(detections)
+
+            if all_detections:
+                all_detections = np.concatenate(all_detections, axis=0)
+
+                nms_indices = self.apply_class_wise_nms(
+                    all_detections[:, :4],  # boxes
+                    all_detections[:, 4],  # scores
+                    all_detections[:, 5].astype(np.int32),  # class_ids
+                )
+
+                filtered_detections = all_detections[nms_indices]
+
+                for detection in filtered_detections:
+                    x1, y1, x2, y2, score, class_id = detection
+
+                    detection_result = DetectionResult()
+
+                    width = x2 - x1
+                    height = y2 - y1
+                    center_x = x1 + (width / 2)
+                    center_y = y1 + (height / 2)
+
+                    detection_result.left_top_x = int(x1)
+                    detection_result.left_top_y = int(y1)
+                    detection_result.right_bottom_x = int(x2)
+                    detection_result.right_bottom_y = int(y2)
+                    detection_result.center_x = int(center_x)
+                    detection_result.center_y = int(center_y)
+                    detection_result.width = int(width)
+                    detection_result.height = int(height)
+                    detection_result.score = float(score)
+                    detection_result.class_id = int(class_id)
+
+                    results.append(detection_result)
+        else:
+            decode_data_list = []
+            for input_image in input_images:
+                outputs = self.model.run(None, {self.config["onnx"]["input_blob_name"]: input_image})
+
+                decode_data = self._decode_outputs(outputs)
+                decode_data_list.append(decode_data)
+
+            results = self._get_detect_results(decode_data_list)
 
         return results
 
-    def _plot_one_box(self, pt1, pt2, image, category, prob, color):
+    def _plot_one_box(self, pt1, pt2, image, category, score, color):
+        # Calculate line thickness based on image size
         tl = round(0.001 * max(image.shape[0:2])) + 1  # line thickness
+
+        # Draw rectangle
         cv2.rectangle(img=image, pt1=pt1, pt2=pt2, color=color, thickness=tl)
 
+        # Draw label background and text
         tf = max(tl - 2, 1)  # font thickness
-        text = category + " " + f"{prob:.2f}"
+        text = category + " " + f"{score:.2f}"
         t_size, _ = cv2.getTextSize(text=text, fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=tl / 3, thickness=tf)
         cv2.rectangle(
             img=image,
             pt1=pt1,
             pt2=(pt1[0] + t_size[0], pt1[1] - t_size[1] - 3),
             color=color,
-            thickness=-1,
+            thickness=-1,  # Filled rectangle
         )
         cv2.putText(
             img=image,
@@ -457,7 +527,7 @@ class Detector(object):
             org=(pt1[0], pt1[1] - 2),
             fontFace=cv2.FONT_HERSHEY_SIMPLEX,
             fontScale=tl / 3,
-            color=[0, 0, 0],
+            color=[0, 0, 0],  # Black text
             thickness=tf,
             lineType=cv2.LINE_AA,
         )
@@ -486,7 +556,7 @@ class Detector(object):
                         pt2,
                         image,
                         class_name,
-                        result.prob,
+                        result.score,
                         self.config["detecting"]["plot_colors"][result.class_id],
                     )
 
@@ -509,7 +579,7 @@ class Detector(object):
             sum_process_time += process_time
             pbar.update()
 
-            # Wait for ESC key to exit
+            # Check for ESC key to exit
             if cv2.waitKey(30) == 27:
                 break
 
@@ -523,7 +593,7 @@ class Detector(object):
 
         print(f"Process time: {average_process_time:.4f}[s], fps: {fps:.4f}")
 
-        if self.config["detecting"]["input_type"] == 1:
+        if self.config["detecting"]["input_type"] == "movie":
             self.cap.release()
             cv2.destroyAllWindows()
             self.video_writer.release()
