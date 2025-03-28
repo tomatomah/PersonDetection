@@ -229,9 +229,9 @@ def simplify_onnx_model(input_path, output_path, max_iterations=5, min_size_impr
                 best_model = simplified_model
                 best_size = current_size
 
-            # Remove temporary file
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
+        # Remove temporary file
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
 
         # Save the best model
         onnx.save(best_model, output_path)
