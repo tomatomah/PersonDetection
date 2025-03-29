@@ -23,7 +23,6 @@ class ObjectDetectionPostProcessor(nn.Module):
         self.base_model = base_model
         self.num_classes = config["model"]["num_classes"]
         self.detect_threshold = config["detecting"]["detect_threshold"]
-        self.iou_threshold = config["detecting"]["iou_threshold"]
 
         # Feature map strides for each detection level
         self.strides = nn.Parameter(torch.tensor([8, 16, 32], dtype=torch.float32), requires_grad=False)
