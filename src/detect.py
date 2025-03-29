@@ -93,6 +93,8 @@ class Detector(object):
 
         self.frame_length = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
+        os.makedirs(self.save_movie_dir, exist_ok=True)
+
         output_movie_path = os.path.join(self.save_movie_dir, file_name + ".mp4")
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         fps = self.cap.get(cv2.CAP_PROP_FPS)
