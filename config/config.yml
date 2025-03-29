@@ -54,7 +54,6 @@ training:
 
   save_dir: "./outputs"
 
-  
 onnx:
   input_blob_name: "input"
   output_blob_name: ["output1", "output2", "output3"]
@@ -68,9 +67,9 @@ detecting:
                 [0, 127, 255]]
   input_type: "image"  # image or movie
   image_list_file: "./image_list.txt" # only using image
-  movie_path: "./assets/sample.mp4" # only using movie
+  movie_path: "./assets/sample1.mp4" # only using movie
   model_file: "model_with_postprocessing.onnx"
   detect_threshold: 0.25
-  iou_threshold: 0.45
+  iou_threshold: 0.35
   scale_list: [1.0]
   save_dir: "./outputs"
