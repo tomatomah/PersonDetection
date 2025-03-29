@@ -93,14 +93,12 @@ class Detector(object):
 
         self.frame_length = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        output_movie_path = os.path.join(self.save_movie_dir, file_name + "_detect.mp4")
+        output_movie_path = os.path.join(self.save_movie_dir, file_name + ".mp4")
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         fps = self.cap.get(cv2.CAP_PROP_FPS)
         width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self.video_writer = cv2.VideoWriter(output_movie_path, fourcc, fps, (width, height))
-
-        os.makedirs(self.save_movie_dir, exist_ok=True)
 
     def _load_image(self):
         image_path = self.image_list[self.frame_index]
@@ -503,31 +501,54 @@ class Detector(object):
 
         return results
 
-    def _plot_one_box(self, pt1, pt2, image, category, score, color):
-        # Calculate line thickness based on image size
-        tl = round(0.001 * max(image.shape[0:2])) + 1  # line thickness
+    def _plot_one_box(self, pt1, pt2, image, category, score, color, alpha=0.5):
+        # Get image dimensions and calculate appropriate sizes
+        h, w = image.shape[:2]
+        tl = max(round(0.0006 * max(h, w)), 1)  # Line thickness
+        tf = max(tl - 1, 1)  # Font thickness
 
-        # Draw rectangle
-        cv2.rectangle(img=image, pt1=pt1, pt2=pt2, color=color, thickness=tl)
+        # Format display text
+        text = f"{category} {score:.2f}"
 
-        # Draw label background and text
-        tf = max(tl - 2, 1)  # font thickness
-        text = category + " " + f"{score:.2f}"
-        t_size, _ = cv2.getTextSize(text=text, fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=tl / 3, thickness=tf)
-        cv2.rectangle(
-            img=image,
-            pt1=pt1,
-            pt2=(pt1[0] + t_size[0], pt1[1] - t_size[1] - 3),
-            color=color,
-            thickness=-1,  # Filled rectangle
-        )
+        # Calculate text dimensions
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = tl / 4.5
+        t_size, _ = cv2.getTextSize(text=text, fontFace=font, fontScale=font_scale, thickness=tf)
+
+        # Draw semi-transparent box
+        overlay = image.copy()
+        cv2.rectangle(img=overlay, pt1=pt1, pt2=pt2, color=color, thickness=-1)
+        cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
+
+        # Draw box border
+        cv2.rectangle(img=image, pt1=pt1, pt2=pt2, color=color, thickness=tl, lineType=cv2.LINE_AA)
+
+        # Calculate label position
+        label_pt1 = (pt1[0], pt1[1] - t_size[1] - 3)
+        label_pt2 = (pt1[0] + t_size[0] + 3, pt1[1])
+
+        # Keep label within image bounds
+        if label_pt1[1] < 0:
+            label_pt1 = (pt1[0], pt1[1])
+            label_pt2 = (pt1[0] + t_size[0] + 3, pt1[1] + t_size[1] + 3)
+
+        # Draw label background
+        cv2.rectangle(img=image, pt1=label_pt1, pt2=label_pt2, color=color, thickness=-1, lineType=cv2.LINE_AA)
+
+        # Auto-select text color based on background brightness
+        text_color = [0, 0, 0]  # Default black
+        if (color[0] + color[1] + color[2]) < 384:  # For dark background colors
+            text_color = [255, 255, 255]  # White text
+
+        # Draw text
+        text_pos = (label_pt1[0] + 1, label_pt2[1] - 3)
         cv2.putText(
             img=image,
             text=text,
-            org=(pt1[0], pt1[1] - 2),
-            fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-            fontScale=tl / 3,
-            color=[0, 0, 0],  # Black text
+            org=text_pos,
+            fontFace=font,
+            fontScale=font_scale,
+            color=text_color,
             thickness=tf,
             lineType=cv2.LINE_AA,
         )
