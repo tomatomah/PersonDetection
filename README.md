@@ -71,7 +71,7 @@ The project settings are managed in the `config/config.yaml` file.
 
 ```bash
 # Run detection
-python detect.py
+python src/detect.py
 
 # Detection results are saved by default to ./outputs/detect/
 # - Image detection results: ./outputs/detect/images/
@@ -83,26 +83,25 @@ python detect.py
 You can customize the following settings in the `config/config.yaml` file:
 
 ```yaml
-# Detection class and display color settings
 detecting:
+  # Detection class and display color settings
   id_to_class: {0: "head", 1: "person"}
   plot_colors: [[255, 128, 0],   # Color for head (orange)
                 [0, 127, 255]]   # Color for person (blue)
-
-# Change input source
-detecting:
+  # Change input source
   input_type: "image"  # "image" or "movie"
   image_list_file: "./image_list.txt"  # List of image paths
   movie_path: "./assets/demo_video1.mp4"  # Video path
 
-# Adjust detection parameters
-detecting:
+  # model file
+  model_file: "model_with_postprocessing.onnx"
+
+  # Adjust detection parameters
   detect_threshold: 0.25  # Detection threshold (0.0-1.0)
   iou_threshold: 0.35    # IoU threshold for NMS
   scale_list: [1.0]      # For multi-scale detection (e.g., [0.8, 1.0, 1.2])
 
-# Output directory for detection results
-detecting:
+  # Output directory for detection results
   save_dir: "./outputs"  # Directory to save results
 ```
 
