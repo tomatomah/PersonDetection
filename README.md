@@ -48,13 +48,30 @@ pip install -r requirements.txt
 
 ## Usage
 
-### Basic Usage
+### Model Download
 
-The project settings are managed in the `config.yaml` file.
+Pre-trained nano-sized ONNX models are available for release. The ONNX models come in four varieties: FP32 models with and without post-processing, and FP16 models with and without post-processing.
 
 ```bash
-# Run detection (using the input source specified in the config file)
-python detect.py --config_path config.yaml
+# 1. Download the ONNX model files from the GitHub release page
+# 2. Create the output directory if it doesn't exist
+mkdir -p outputs/onnx
+
+# 3. Place the downloaded model files in the outputs/onnx/ directory
+# Example:
+# outputs/onnx/model_with_postprocessing.onnx
+# outputs/onnx/model_without_postprocessing.onnx
+# outputs/onnx/model_fp16_with_postprocessing.onnx
+# outputs/onnx/model_fp16_without_postprocessing.onnx
+```
+
+### Basic Usage
+
+The project settings are managed in the `config/config.yaml` file.
+
+```bash
+# Run detection
+python detect.py
 
 # Detection results are saved by default to ./outputs/detect/
 # - Image detection results: ./outputs/detect/images/
@@ -63,7 +80,7 @@ python detect.py --config_path config.yaml
 
 ### Configuration Options
 
-You can customize the following settings in the `config.yaml` file:
+You can customize the following settings in the `config/config.yaml` file:
 
 ```yaml
 # Detection class and display color settings
