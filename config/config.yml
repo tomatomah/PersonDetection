@@ -67,7 +67,7 @@ detecting:
                 [0, 127, 255]]
   input_type: "image"  # image or movie
   image_list_file: "./image_list.txt" # only using image
-  movie_path: "./assets/sample1.mp4" # only using movie
+  movie_path: "./assets/demo_video1.mp4" # only using movie
   model_file: "model_with_postprocessing.onnx"
   detect_threshold: 0.25
   iou_threshold: 0.35
