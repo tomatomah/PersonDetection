@@ -108,7 +108,9 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## References
   - https://cocodataset.org/
-  - https://github.com/Megvii-BaseDetection/YOLOX
+  - https://github.com/Megvii-BaseDetection/YOLO
+  - Video by Coverr from Pexels: https://www.pexels.com/video/black-and-white-video-of-people-853889/
+  - Video by George Morina from Pexels: https://www.pexels.com/video/people-walking-by-bond-street-station-entry-gate-5325136/
 
 ## License
 
